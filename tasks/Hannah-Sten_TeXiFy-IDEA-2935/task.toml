@@ -1,0 +1,21 @@
+[metadata.source]
+repository_owner = "Hannah-Sten"
+repository_name = "TeXiFy-IDEA"
+repository_url = "https://github.com/Hannah-Sten/TeXiFy-IDEA"
+code_change_type = "pr"
+code_change_id = "2935"
+code_change_url = "https://github.com/Hannah-Sten/TeXiFy-IDEA/pull/2935"
+issue_url = "https://github.com/Hannah-Sten/TeXiFy-IDEA/issues/2857"
+
+[verifier]
+implemented = false
+timeout_sec = 900.0
+
+[agent]
+timeout_sec = 1800.0
+
+[environment]
+build_timeout_sec = 1800.0
+cpus = 4
+memory_mb = 10240
+allow_internet = true

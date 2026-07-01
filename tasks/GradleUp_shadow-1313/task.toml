@@ -1,0 +1,21 @@
+[metadata.source]
+repository_owner = "GradleUp"
+repository_name = "shadow"
+repository_url = "https://github.com/GradleUp/shadow"
+code_change_type = "pr"
+code_change_id = "1313"
+code_change_url = "https://github.com/GradleUp/shadow/pull/1313"
+issue_url = "https://github.com/GradleUp/shadow/issues/884"
+
+[verifier]
+implemented = false
+timeout_sec = 900.0
+
+[agent]
+timeout_sec = 1800.0
+
+[environment]
+build_timeout_sec = 1800.0
+cpus = 4
+memory_mb = 10240
+allow_internet = true

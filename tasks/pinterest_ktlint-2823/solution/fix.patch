@@ -1,0 +1,100 @@
+diff --git a/documentation/snapshot/docs/rules/standard.md b/documentation/snapshot/docs/rules/standard.md
+index 33879cd5..17992b20 100644
+--- a/documentation/snapshot/docs/rules/standard.md
++++ b/documentation/snapshot/docs/rules/standard.md
+@@ -758,7 +758,7 @@ Enforces the parameters of a function literal and the arrow to be written on the
+ 
+ If the function literal contains multiple parameters and at least one parameter other than the first parameter starts on a new line than all parameters and the arrow are wrapped to separate lines.
+ 
+-=== "[:material-heart:](#) Ktlint"
++=== "[:material-heart:](#) Ktlint (ktlint_official)"
+ 
+     ```kotlin
+     val foobar1 = { foo + bar }
+@@ -775,6 +775,27 @@ If the function literal contains multiple parameters and at least one parameter
+             foo + bar
+         }
+     val foobar5 = { foo: Foo, bar: Bar -> foo + bar }
++    val foobar6 =
++        {
++            foo: Foo,
++            bar: Bar,
++            ->
++            foo + bar
++        }
++    
++    // Assume that the last allowed character is
++    // at the X character on the right           X
++    val foobar7 =
++        barrrrrrrrrrrrrr { 
++            fooooooooooooooo: Foo
++            ->
++            foo.repeat(2)
++        }
++    ```
++
++=== "[:material-heart:](#) Ktlint (non ktlint_official)"
++
++    ```kotlin
+     val foobar6 =
+         {
+                 foo: Foo,
+@@ -787,7 +808,7 @@ If the function literal contains multiple parameters and at least one parameter
+     // at the X character on the right           X
+     val foobar7 =
+         barrrrrrrrrrrrrr { 
+-              fooooooooooooooo: Foo
++                fooooooooooooooo: Foo
+             ->
+             foo.repeat(2)
+         }
+diff --git a/ktlint-rule-engine/src/main/kotlin/com/pinterest/ktlint/rule/engine/internal/RuleExecutionContext.kt b/ktlint-rule-engine/src/main/kotlin/com/pinterest/ktlint/rule/engine/internal/RuleExecutionContext.kt
+index e4204671..0db52937 100644
+--- a/ktlint-rule-engine/src/main/kotlin/com/pinterest/ktlint/rule/engine/internal/RuleExecutionContext.kt
++++ b/ktlint-rule-engine/src/main/kotlin/com/pinterest/ktlint/rule/engine/internal/RuleExecutionContext.kt
+@@ -196,9 +196,9 @@ internal class RuleExecutionContext private constructor(
+     @Deprecated(message = "Remove in Ktlint 2.0")
+     private fun ((offset: Int, errorMessage: String, canBeAutoCorrected: Boolean) -> AutocorrectDecision).onlyEmit() =
+         {
+-                offset: Int,
+-                errorMessage: String,
+-                canBeAutoCorrected: Boolean,
++            offset: Int,
++            errorMessage: String,
++            canBeAutoCorrected: Boolean,
+             ->
+             this(offset, errorMessage, canBeAutoCorrected)
+             Unit
+diff --git a/ktlint-ruleset-standard/src/main/kotlin/com/pinterest/ktlint/ruleset/standard/rules/IndentationRule.kt b/ktlint-ruleset-standard/src/main/kotlin/com/pinterest/ktlint/ruleset/standard/rules/IndentationRule.kt
+index b50be93c..73c6bed2 100644
+--- a/ktlint-ruleset-standard/src/main/kotlin/com/pinterest/ktlint/ruleset/standard/rules/IndentationRule.kt
++++ b/ktlint-ruleset-standard/src/main/kotlin/com/pinterest/ktlint/ruleset/standard/rules/IndentationRule.kt
+@@ -517,14 +517,20 @@ public class IndentationRule :
+ 
+     private fun ASTNode.calculateIndentOfFunctionLiteralParameters() =
+         if (isFirstParameterOfFunctionLiteralPrecededByNewLine()) {
+-            // val fieldExample =
+-            //      LongNameClass {
+-            //              paramA,
+-            //              paramB,
+-            //              paramC ->
+-            //          ClassB(paramA, paramB, paramC)
+-            //      }
+-            indentConfig.indent.repeat(2)
++            if (codeStyle == ktlint_official) {
++                // Indent with single indent as defined in Kotlin Coding conventions
++                indentConfig.indent
++            } else {
++                // Comply with default IDEA formatting although it is not compliant with Kotlin Coding conventions
++                // val fieldExample =
++                //      LongNameClass {
++                //              paramA,
++                //              paramB,
++                //              paramC ->
++                //          ClassB(paramA, paramB, paramC)
++                //      }
++                indentConfig.indent.repeat(2)
++            }
+         } else {
+             // Allow default IntelliJ IDEA formatting:
+             // val fieldExample =

@@ -1,0 +1,3 @@
+services:
+  main:
+    image: kotlin-bench/detekt_detekt:pr-4628

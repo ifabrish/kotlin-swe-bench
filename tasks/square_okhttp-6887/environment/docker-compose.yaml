@@ -1,0 +1,3 @@
+services:
+  main:
+    image: kotlin-bench/square_okhttp:pr-6887

@@ -1,0 +1,61 @@
+diff --git a/plugins/package-managers/python/src/main/kotlin/Pip.kt b/plugins/package-managers/python/src/main/kotlin/Pip.kt
+index f14f4e91d3626..1ce336aa7695c 100644
+--- a/plugins/package-managers/python/src/main/kotlin/Pip.kt
++++ b/plugins/package-managers/python/src/main/kotlin/Pip.kt
+@@ -61,6 +61,11 @@ class Pip(
+     companion object {
+         const val OPTION_OPERATING_SYSTEM = "operatingSystem"
+         const val OPTION_PYTHON_VERSION = "pythonVersion"
++
++        /**
++         * The name of the build system requirements and information file used by modern Python packages.
++         */
++        const val PYPROJECT_FILENAME = "pyproject.toml"
+     }
+ 
+     class Factory : AbstractPackageManagerFactory<Pip>("PIP") {
+diff --git a/plugins/package-managers/python/src/main/kotlin/Poetry.kt b/plugins/package-managers/python/src/main/kotlin/Poetry.kt
+index 49aa47480113a..62e6a05b56acd 100644
+--- a/plugins/package-managers/python/src/main/kotlin/Poetry.kt
++++ b/plugins/package-managers/python/src/main/kotlin/Poetry.kt
+@@ -37,6 +37,8 @@ import org.ossreviewtoolkit.plugins.packagemanagers.python.utils.toOrtPackages
+ import org.ossreviewtoolkit.plugins.packagemanagers.python.utils.toPackageReferences
+ import org.ossreviewtoolkit.utils.common.CommandLineTool
+ import org.ossreviewtoolkit.utils.common.ProcessCapture
++import org.ossreviewtoolkit.utils.common.withoutPrefix
++import org.ossreviewtoolkit.utils.common.withoutSuffix
+ import org.ossreviewtoolkit.utils.ort.createOrtTempFile
+ 
+ /**
+@@ -63,7 +65,8 @@ class Poetry(
+     override fun transformVersion(output: String) = output.substringAfter("version ").removeSuffix(")")
+ 
+     override fun resolveDependencies(definitionFile: File, labels: Map<String, String>): List<ProjectAnalyzerResult> {
+-        val resultsForScopeName = SCOPES_NAMES.associateWith { inspectLockfile(definitionFile, it) }
++        val scopeName = parseScopeNamesFromPyproject(definitionFile.resolveSibling(Pip.PYPROJECT_FILENAME))
++        val resultsForScopeName = scopeName.associateWith { inspectLockfile(definitionFile, it) }
+ 
+         val packages = resultsForScopeName
+             .flatMap { (_, results) -> results.packages }
+@@ -115,4 +118,20 @@ class Poetry(
+     }
+ }
+ 
+-private val SCOPES_NAMES = listOf("main", "dev")
++internal fun parseScopeNamesFromPyproject(pyprojectFile: File): Set<String> {
++    // The implicit "main" scope is always present.
++    val scopes = mutableSetOf("main")
++
++    if (!pyprojectFile.isFile) return scopes
++
++    pyprojectFile.readLines().mapNotNullTo(scopes) { line ->
++        // Handle both "[tool.poetry.<scope>-dependencies]" and "[tool.poetry.group.<scope>.dependencies]" syntax.
++        val poetryEntry = line.withoutPrefix("[tool.poetry.")
++        poetryEntry.withoutPrefix("group.") { poetryEntry }
++            .withoutSuffix("dependencies]")
++            ?.trimEnd('-', '.')
++            ?.takeUnless { it.isEmpty() }
++    }
++
++    return scopes
++}

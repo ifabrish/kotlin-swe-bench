@@ -1,0 +1,108 @@
+diff --git a/detekt-api/api/detekt-api.api b/detekt-api/api/detekt-api.api
+index aa3531d5449..1cc460290f2 100644
+--- a/detekt-api/api/detekt-api.api
++++ b/detekt-api/api/detekt-api.api
+@@ -277,13 +277,15 @@ public abstract interface class io/gitlab/arturbosch/detekt/api/RequiresFullAnal
+
+ public class io/gitlab/arturbosch/detekt/api/Rule : io/gitlab/arturbosch/detekt/api/DetektVisitor {
+ 	protected field compilerResources Lio/gitlab/arturbosch/detekt/api/CompilerResources;
+-	public fun <init> (Lio/gitlab/arturbosch/detekt/api/Config;Ljava/lang/String;)V
++	public fun <init> (Lio/gitlab/arturbosch/detekt/api/Config;Ljava/lang/String;Ljava/net/URI;)V
++	public synthetic fun <init> (Lio/gitlab/arturbosch/detekt/api/Config;Ljava/lang/String;Ljava/net/URI;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+ 	public final fun getAutoCorrect ()Z
+ 	public final fun getBindingContext (Lio/gitlab/arturbosch/detekt/api/RequiresFullAnalysis;)Lorg/jetbrains/kotlin/resolve/BindingContext;
+ 	protected final fun getCompilerResources ()Lio/gitlab/arturbosch/detekt/api/CompilerResources;
+ 	public final fun getConfig ()Lio/gitlab/arturbosch/detekt/api/Config;
+ 	public final fun getDescription ()Ljava/lang/String;
+ 	public fun getRuleName ()Lio/gitlab/arturbosch/detekt/api/Rule$Name;
++	public final fun getUrl ()Ljava/net/URI;
+ 	protected fun postVisit (Lorg/jetbrains/kotlin/psi/KtFile;)V
+ 	protected fun preVisit (Lorg/jetbrains/kotlin/psi/KtFile;)V
+ 	public final fun report (Lio/gitlab/arturbosch/detekt/api/Finding;)V
+diff --git a/detekt-api/src/main/kotlin/io/gitlab/arturbosch/detekt/api/Rule.kt b/detekt-api/src/main/kotlin/io/gitlab/arturbosch/detekt/api/Rule.kt
+index 46cf5dcb0d9..cd77f584d81 100644
+--- a/detekt-api/src/main/kotlin/io/gitlab/arturbosch/detekt/api/Rule.kt
++++ b/detekt-api/src/main/kotlin/io/gitlab/arturbosch/detekt/api/Rule.kt
+@@ -4,6 +4,7 @@ import dev.drewhamilton.poko.Poko
+ import io.gitlab.arturbosch.detekt.api.internal.validateIdentifier
+ import org.jetbrains.kotlin.psi.KtFile
+ import org.jetbrains.kotlin.resolve.BindingContext
++import java.net.URI
+
+ /**
+  * A rule defines how one specific code structure should look like. If code is found
+@@ -13,10 +14,13 @@ import org.jetbrains.kotlin.resolve.BindingContext
+  * A rule is implemented using the visitor pattern and should be started using the visit(KtFile)
+  * function. If calculations must be done before or after the visiting process, here are
+  * two predefined (preVisit/postVisit) functions which can be overridden to setup/teardown additional data.
++ *
++ * @property url An url pointing to the documentation of this rule
+  */
+ open class Rule(
+     val config: Config,
+     val description: String,
++    val url: URI? = null,
+ ) : DetektVisitor() {
+
+     /**
+diff --git a/detekt-core/src/main/kotlin/io/gitlab/arturbosch/detekt/core/RuleDescriptor.kt b/detekt-core/src/main/kotlin/io/gitlab/arturbosch/detekt/core/RuleDescriptor.kt
+index 079ada101a4..104c619c7cf 100644
+--- a/detekt-core/src/main/kotlin/io/gitlab/arturbosch/detekt/core/RuleDescriptor.kt
++++ b/detekt-core/src/main/kotlin/io/gitlab/arturbosch/detekt/core/RuleDescriptor.kt
+@@ -7,6 +7,7 @@ import io.gitlab.arturbosch.detekt.api.RuleInstance
+ import io.gitlab.arturbosch.detekt.api.RuleSet
+ import io.gitlab.arturbosch.detekt.api.RuleSetProvider
+ import io.gitlab.arturbosch.detekt.api.Severity
++import io.gitlab.arturbosch.detekt.api.internal.DefaultRuleSetProvider
+ import io.gitlab.arturbosch.detekt.core.util.isActiveOrDefault
+ import java.net.URI
+
+@@ -24,12 +25,21 @@ internal fun getRules(
+ ): List<RuleDescriptor> = ruleSetProviders
+     .flatMap { ruleSetProvider ->
+         val ruleSetConfig = config.subConfig(ruleSetProvider.ruleSetId.value)
+-        ruleSetProvider.instance().getRules(ruleSetConfig, fullAnalysis, log)
++        val urlGenerator: (Rule) -> URI? =
++            if (ruleSetProvider is DefaultRuleSetProvider ||
++                ruleSetProvider.ruleSetId.value in externalFirstPartyRuleSets
++            ) {
++                { rule -> rule.url ?: generateDefaultUrl(ruleSetProvider.ruleSetId, rule.ruleName) }
++            } else {
++                { rule -> rule.url }
++            }
++        ruleSetProvider.instance().getRules(ruleSetConfig, fullAnalysis, urlGenerator, log)
+     }
+
+ private fun RuleSet.getRules(
+     config: Config,
+     fullAnalysis: Boolean,
++    urlGenerator: (Rule) -> URI?,
+     log: (() -> String) -> Unit,
+ ): Sequence<RuleDescriptor> = config.subConfigKeys()
+     .asSequence()
+@@ -49,7 +59,7 @@ private fun RuleSet.getRules(
+                 ruleInstance = RuleInstance(
+                     id = ruleId,
+                     ruleSetId = id,
+-                    url = generateUrl(id, rule.ruleName),
++                    url = urlGenerator(rule),
+                     description = rule.description,
+                     severity = ruleConfig.computeSeverity(),
+                     active = active && executable,
+@@ -58,9 +68,15 @@ private fun RuleSet.getRules(
+         }
+     }
+
+-private fun generateUrl(ruleSetId: RuleSet.Id, ruleName: Rule.Name) =
++private fun generateDefaultUrl(ruleSetId: RuleSet.Id, ruleName: Rule.Name) =
+     URI("https://detekt.dev/docs/rules/${ruleSetId.value.lowercase()}#${ruleName.value.lowercase()}")
+
++private val externalFirstPartyRuleSets = setOf(
++    "formatting",
++    "ruleauthors",
++    "libraries",
++)
++
+ /**
+  * Compute severity in the priority order:
+  * - Severity of the rule

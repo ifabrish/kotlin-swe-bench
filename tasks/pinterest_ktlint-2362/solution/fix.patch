@@ -1,0 +1,205 @@
+diff --git a/gradle/libs.versions.toml b/gradle/libs.versions.toml
+index fbd43bcc05..65f5b2a3aa 100644
+--- a/gradle/libs.versions.toml
++++ b/gradle/libs.versions.toml
+@@ -25,6 +25,7 @@ slf4j = "org.slf4j:slf4j-simple:2.0.9"
+ poko = "dev.drewhamilton.poko:poko-gradle-plugin:0.15.0"
+ # Use logback-classic as the logger for kotlin-logging / slf4j as it allow changing the log level at runtime.
+ logback = "ch.qos.logback:logback-classic:1.3.5"
++logcaptor = "io.github.hakky54:logcaptor:2.9.0"
+ # Required for logback.xml conditional configuration
+ janino = "org.codehaus.janino:janino:3.1.10"
+ # Testing libraries
+diff --git a/ktlint-cli-reporter-baseline/api/ktlint-cli-reporter-baseline.api b/ktlint-cli-reporter-baseline/api/ktlint-cli-reporter-baseline.api
+index 611b3d1388..755a417a5b 100644
+--- a/ktlint-cli-reporter-baseline/api/ktlint-cli-reporter-baseline.api
++++ b/ktlint-cli-reporter-baseline/api/ktlint-cli-reporter-baseline.api
+@@ -16,10 +16,24 @@ public final class com/pinterest/ktlint/cli/reporter/baseline/Baseline$Status :
+ 	public static fun values ()[Lcom/pinterest/ktlint/cli/reporter/baseline/Baseline$Status;
+ }
+
++public final class com/pinterest/ktlint/cli/reporter/baseline/BaselineErrorHandling : java/lang/Enum {
++	public static final field EXCEPTION Lcom/pinterest/ktlint/cli/reporter/baseline/BaselineErrorHandling;
++	public static final field LOG Lcom/pinterest/ktlint/cli/reporter/baseline/BaselineErrorHandling;
++	public static fun getEntries ()Lkotlin/enums/EnumEntries;
++	public static fun valueOf (Ljava/lang/String;)Lcom/pinterest/ktlint/cli/reporter/baseline/BaselineErrorHandling;
++	public static fun values ()[Lcom/pinterest/ktlint/cli/reporter/baseline/BaselineErrorHandling;
++}
++
+ public final class com/pinterest/ktlint/cli/reporter/baseline/BaselineKt {
+ 	public static final fun containsLintError (Ljava/util/List;Lcom/pinterest/ktlint/cli/reporter/core/api/KtlintCliError;)Z
+ 	public static final fun doesNotContain (Ljava/util/List;Lcom/pinterest/ktlint/cli/reporter/core/api/KtlintCliError;)Z
+ 	public static final fun loadBaseline (Ljava/lang/String;)Lcom/pinterest/ktlint/cli/reporter/baseline/Baseline;
++	public static final fun loadBaseline (Ljava/lang/String;Lcom/pinterest/ktlint/cli/reporter/baseline/BaselineErrorHandling;)Lcom/pinterest/ktlint/cli/reporter/baseline/Baseline;
++	public static synthetic fun loadBaseline$default (Ljava/lang/String;Lcom/pinterest/ktlint/cli/reporter/baseline/BaselineErrorHandling;ILjava/lang/Object;)Lcom/pinterest/ktlint/cli/reporter/baseline/Baseline;
++}
++
++public final class com/pinterest/ktlint/cli/reporter/baseline/BaselineLoaderException : java/lang/RuntimeException {
++	public fun <init> (Ljava/lang/String;Ljava/lang/Throwable;)V
+ }
+
+ public final class com/pinterest/ktlint/cli/reporter/baseline/BaselineReporter : com/pinterest/ktlint/cli/reporter/core/api/ReporterV2 {
+diff --git a/ktlint-cli-reporter-baseline/build.gradle.kts b/ktlint-cli-reporter-baseline/build.gradle.kts
+index 9323b9374e..d5bee82dd9 100644
+--- a/ktlint-cli-reporter-baseline/build.gradle.kts
++++ b/ktlint-cli-reporter-baseline/build.gradle.kts
+@@ -8,4 +8,6 @@ dependencies {
+     implementation(projects.ktlintCliReporterCore)
+
+     testImplementation(projects.ktlintTest)
++    testImplementation(libs.logback)
++    testImplementation(libs.logcaptor)
+ }
+diff --git a/ktlint-cli-reporter-baseline/src/main/kotlin/com/pinterest/ktlint/cli/reporter/baseline/Baseline.kt b/ktlint-cli-reporter-baseline/src/main/kotlin/com/pinterest/ktlint/cli/reporter/baseline/Baseline.kt
+index 751b778b3c..939a3bc48f 100644
+--- a/ktlint-cli-reporter-baseline/src/main/kotlin/com/pinterest/ktlint/cli/reporter/baseline/Baseline.kt
++++ b/ktlint-cli-reporter-baseline/src/main/kotlin/com/pinterest/ktlint/cli/reporter/baseline/Baseline.kt
+@@ -58,23 +58,75 @@ public class Baseline(
+     }
+ }
+
++public enum class BaselineErrorHandling {
++    /**
++     * Log an error message. Does not throw an exception.
++     */
++    LOG,
++
++    /**
++     * Throws an exception on error. Does not log the error.
++     */
++    EXCEPTION,
++}
++
+ /**
+- * Loads the [Baseline] from the file located on [path].
++ * Loads the [Baseline] from the file located on [path]. Exceptions are swallowed and log message is written. On error, the baseline file is
++ * deleted.
+  */
+-public fun loadBaseline(path: String): Baseline = BaselineLoader(path).load()
++@Deprecated(
++    message = "Marked for removal in Ktlint 2.0",
++    replaceWith = ReplaceWith("loadBaseline(path, BaselineErrorHandling.LOG)"),
++)
++public fun loadBaseline(path: String): Baseline = loadBaseline(path, BaselineErrorHandling.LOG)
++
++/**
++ * Loads the [Baseline] from the file located on [path]. In case the baseline file can not be loaded successfully, it will be deleted.
++ */
++public fun loadBaseline(
++    path: String,
++    errorHandling: BaselineErrorHandling = BaselineErrorHandling.EXCEPTION,
++): Baseline =
++    with(BaselineLoader(path)) {
++        try {
++            load()
++        } catch (e: Exception) {
++            // Delete baseline as it contains an error
++            try {
++                delete()
++            } catch (e: Exception) {
++                if (errorHandling == BaselineErrorHandling.LOG) {
++                    LOGGER.error { e.message }
++                } else {
++                    // Swallow as original exception from loading is to be returned only
++                }
++            }
++
++            // Handle original exception
++            if (errorHandling == BaselineErrorHandling.EXCEPTION) {
++                throw e
++            } else {
++                LOGGER.error { e.message }
++                Baseline(path = path, status = INVALID)
++            }
++        }
++    }
+
+ private class BaselineLoader(
+     private val path: String,
+ ) {
++    private val baselinePath =
++        Paths
++            .get(path)
++            .toFile()
++            .takeIf { it.exists() }
++
+     var ruleReferenceWithoutRuleSetIdPrefix = 0
+
+     fun load(): Baseline {
+         require(path.isNotBlank()) { "Path for loading baseline may not be blank or empty" }
+
+-        Paths
+-            .get(path)
+-            .toFile()
+-            .takeIf { it.exists() }
++        baselinePath
+             ?.let { baselineFile ->
+                 try {
+                     return Baseline(
+@@ -91,20 +143,12 @@ private class BaselineLoader(
+                         }
+                     }
+                 } catch (e: IOException) {
+-                    LOGGER.error { "Unable to parse baseline file: $path" }
++                    throw BaselineLoaderException("Unable to parse baseline file: $path", e)
+                 } catch (e: ParserConfigurationException) {
+-                    LOGGER.error { "Unable to parse baseline file: $path" }
++                    throw BaselineLoaderException("Unable to parse baseline file: $path", e)
+                 } catch (e: SAXException) {
+-                    LOGGER.error { "Unable to parse baseline file: $path" }
++                    throw BaselineLoaderException("Unable to parse baseline file: $path", e)
+                 }
+-
+-                // Baseline can not be parsed.
+-                try {
+-                    baselineFile.delete()
+-                } catch (e: IOException) {
+-                    LOGGER.error { "Unable to delete baseline file: $path" }
+-                }
+-                return Baseline(path = path, status = INVALID)
+             }
+
+         return Baseline(path = path, status = NOT_FOUND)
+@@ -172,8 +216,21 @@ private class BaselineLoader(
+             detail = "",
+             status = BASELINE_IGNORED,
+         )
++
++    fun delete() {
++        try {
++            baselinePath?.delete()
++        } catch (e: IOException) {
++            throw BaselineLoaderException("Unable to delete baseline file: $path", e)
++        }
++    }
+ }
+
++public class BaselineLoaderException(
++    message: String,
++    throwable: Throwable,
++) : RuntimeException(message, throwable)
++
+ /**
+  * Checks if the list contains the given [KtlintCliError]. The [List.contains] function can not be used as [KtlintCliError.detail] is not
+  * available in the baseline file and a normal equality check on the [KtlintCliError] fails.
+diff --git a/ktlint-cli/src/main/kotlin/com/pinterest/ktlint/cli/internal/KtlintCommandLine.kt b/ktlint-cli/src/main/kotlin/com/pinterest/ktlint/cli/internal/KtlintCommandLine.kt
+index bc35430add..0364a055c1 100644
+--- a/ktlint-cli/src/main/kotlin/com/pinterest/ktlint/cli/internal/KtlintCommandLine.kt
++++ b/ktlint-cli/src/main/kotlin/com/pinterest/ktlint/cli/internal/KtlintCommandLine.kt
+@@ -3,6 +3,7 @@ package com.pinterest.ktlint.cli.internal
+ import ch.qos.logback.classic.Level
+ import ch.qos.logback.classic.Logger
+ import com.pinterest.ktlint.cli.reporter.baseline.Baseline
++import com.pinterest.ktlint.cli.reporter.baseline.BaselineErrorHandling
+ import com.pinterest.ktlint.cli.reporter.baseline.doesNotContain
+ import com.pinterest.ktlint.cli.reporter.baseline.loadBaseline
+ import com.pinterest.ktlint.cli.reporter.core.api.KtlintCliError
+@@ -300,7 +301,7 @@ internal class KtlintCommandLine {
+             if (stdin || baselinePath.isBlank()) {
+                 Baseline(status = Baseline.Status.DISABLED)
+             } else {
+-                loadBaseline(baselinePath)
++                loadBaseline(baselinePath, BaselineErrorHandling.LOG)
+             }
+         val aggregatedReporter =
+             ReporterAggregator(

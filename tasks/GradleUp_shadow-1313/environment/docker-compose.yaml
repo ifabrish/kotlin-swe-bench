@@ -1,0 +1,3 @@
+services:
+  main:
+    image: kotlin-bench/gradleup_shadow:pr-1313

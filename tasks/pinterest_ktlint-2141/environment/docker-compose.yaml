@@ -1,0 +1,3 @@
+services:
+  main:
+    image: kotlin-bench/pinterest_ktlint:pr-2141

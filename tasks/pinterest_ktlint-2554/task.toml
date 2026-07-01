@@ -1,0 +1,21 @@
+[metadata.source]
+repository_owner = "pinterest"
+repository_name = "ktlint"
+repository_url = "https://github.com/pinterest/ktlint"
+code_change_type = "pr"
+code_change_id = "2554"
+code_change_url = "https://github.com/pinterest/ktlint/pull/2554"
+issue_url = "https://github.com/pinterest/ktlint/issues/2539"
+
+[verifier]
+implemented = false
+timeout_sec = 900.0
+
+[agent]
+timeout_sec = 1800.0
+
+[environment]
+build_timeout_sec = 1800.0
+cpus = 4
+memory_mb = 10240
+allow_internet = true

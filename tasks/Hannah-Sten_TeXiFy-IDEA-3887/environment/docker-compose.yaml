@@ -1,0 +1,3 @@
+services:
+  main:
+    image: kotlin-bench/hannah-sten_texify-idea:pr-3887

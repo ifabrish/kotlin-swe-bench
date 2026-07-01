@@ -1,0 +1,45 @@
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index 735d6cddb5..6ad174a02c 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -49,7 +49,8 @@ Class "org.jetbrains.kotlin.com.intellij.treeCopyHandler" is no longer registere
+ * Do not wrap a single line enum class `statement-wrapping` [#2177](https://github.com/pinterest/ktlint/issues/2177)
+ * Fix alignment of type constraints after `where` keyword in function signature `indent` [#2175](https://github.com/pinterest/ktlint/issues/2175)
+ * Fix wrapping of multiline postfix expression `multiline-expression-wrapping` [#2183](https://github.com/pinterest/ktlint/issues/2183)
+-* Remove registration of class "org.jetbrains.kotlin.com.intellij.treeCopyHandler" as extension point for the compiler as this is not supported in the embedded Kotlin compiler version 1.9. Also remove Ktlint CLI command line flag `disable-kotlin-extension-point`, and parameter `enableKotlinCompilerExtensionPoint` from `KtLintRuleEngine` to disable the kotlin extension point  [#2061](https://github.com/pinterest/ktlint/issues/2061)
++* Remove registration of class "org.jetbrains.kotlin.com.intellij.treeCopyHandler" as extension point for the compiler as this is not supported in the embedded Kotlin compiler version 1.9. Also remove Ktlint CLI command line flag `disable-kotlin-extension-point`, and parameter `enableKotlinCompilerExtensionPoint` from `KtLintRuleEngine` to disable the kotlin extension point [#2061](https://github.com/pinterest/ktlint/issues/2061)
++* Do not wrap expression after a spread operator `multiline-expression-wrapping` [#2188](https://github.com/pinterest/ktlint/issues/2188)
+
+ ### Changed
+
+diff --git a/ktlint-ruleset-standard/src/main/kotlin/com/pinterest/ktlint/ruleset/standard/rules/MultilineExpressionWrappingRule.kt b/ktlint-ruleset-standard/src/main/kotlin/com/pinterest/ktlint/ruleset/standard/rules/MultilineExpressionWrappingRule.kt
+index 7a9815814c..c2a95fdf68 100644
+--- a/ktlint-ruleset-standard/src/main/kotlin/com/pinterest/ktlint/ruleset/standard/rules/MultilineExpressionWrappingRule.kt
++++ b/ktlint-ruleset-standard/src/main/kotlin/com/pinterest/ktlint/ruleset/standard/rules/MultilineExpressionWrappingRule.kt
+@@ -13,6 +13,7 @@ import com.pinterest.ktlint.rule.engine.core.api.ElementType.EQ
+ import com.pinterest.ktlint.rule.engine.core.api.ElementType.FUN
+ import com.pinterest.ktlint.rule.engine.core.api.ElementType.IF
+ import com.pinterest.ktlint.rule.engine.core.api.ElementType.IS_EXPRESSION
++import com.pinterest.ktlint.rule.engine.core.api.ElementType.MUL
+ import com.pinterest.ktlint.rule.engine.core.api.ElementType.OBJECT_LITERAL
+ import com.pinterest.ktlint.rule.engine.core.api.ElementType.OPERATION_REFERENCE
+ import com.pinterest.ktlint.rule.engine.core.api.ElementType.POSTFIX_EXPRESSION
+@@ -74,6 +75,7 @@ public class MultilineExpressionWrappingRule :
+         emit: (offset: Int, errorMessage: String, canBeAutoCorrected: Boolean) -> Unit,
+     ) {
+         if (node.elementType in CHAINABLE_EXPRESSION &&
++            !node.isPartOfSpreadOperatorExpression() &&
+             (node.treeParent.elementType !in CHAINABLE_EXPRESSION || node.isRightHandSideOfBinaryExpression())
+         ) {
+             visitExpression(node, emit, autoCorrect)
+@@ -85,6 +87,10 @@ public class MultilineExpressionWrappingRule :
+         }
+     }
+
++    private fun ASTNode.isPartOfSpreadOperatorExpression() =
++        prevCodeLeaf()?.elementType == MUL &&
++            treeParent.elementType == VALUE_ARGUMENT
++
+     private fun visitExpression(
+         node: ASTNode,
+         emit: (offset: Int, errorMessage: String, canBeAutoCorrected: Boolean) -> Unit,

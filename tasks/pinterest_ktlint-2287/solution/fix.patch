@@ -1,0 +1,49 @@
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index e1460ff7a9..3186173098 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -18,6 +18,7 @@ This project adheres to [Semantic Versioning](https://semver.org/).
+ * Do not force blank line before function in right hand side of assignment `blank-line-before-declaration` [#2260](https://github.com/pinterest/ktlint/issue/2260)
+ * Ignore override of function in rule `function-naming` [#2271](https://github.com/pinterest/ktlint/issue/2271)
+ * Do not replace function body having a return statement only in case the return statement contains an intermediate exit point 'function-expression-body' [#2269](https://github.com/pinterest/ktlint/issue/2269)
++* Force blank line before object declaration if preceded by another declaration `blank-line-before-declaration` [#2284](https://github.com/pinterest/ktlint/issues/2284)
+
+ ### Changed
+
+diff --git a/ktlint-ruleset-standard/src/main/kotlin/com/pinterest/ktlint/ruleset/standard/rules/BlankLineBeforeDeclarationRule.kt b/ktlint-ruleset-standard/src/main/kotlin/com/pinterest/ktlint/ruleset/standard/rules/BlankLineBeforeDeclarationRule.kt
+index b75c306864..e7a5475a60 100644
+--- a/ktlint-ruleset-standard/src/main/kotlin/com/pinterest/ktlint/ruleset/standard/rules/BlankLineBeforeDeclarationRule.kt
++++ b/ktlint-ruleset-standard/src/main/kotlin/com/pinterest/ktlint/ruleset/standard/rules/BlankLineBeforeDeclarationRule.kt
+@@ -8,6 +8,8 @@ import com.pinterest.ktlint.rule.engine.core.api.ElementType.EQ
+ import com.pinterest.ktlint.rule.engine.core.api.ElementType.FUN
+ import com.pinterest.ktlint.rule.engine.core.api.ElementType.FUNCTION_LITERAL
+ import com.pinterest.ktlint.rule.engine.core.api.ElementType.LBRACE
++import com.pinterest.ktlint.rule.engine.core.api.ElementType.OBJECT_DECLARATION
++import com.pinterest.ktlint.rule.engine.core.api.ElementType.OBJECT_LITERAL
+ import com.pinterest.ktlint.rule.engine.core.api.ElementType.PROPERTY
+ import com.pinterest.ktlint.rule.engine.core.api.ElementType.PROPERTY_ACCESSOR
+ import com.pinterest.ktlint.rule.engine.core.api.ElementType.WHEN
+@@ -48,6 +50,7 @@ public class BlankLineBeforeDeclarationRule :
+             CLASS,
+             CLASS_INITIALIZER,
+             FUN,
++            OBJECT_DECLARATION,
+             PROPERTY,
+             PROPERTY_ACCESSOR,
+             ->
+@@ -126,6 +129,15 @@ public class BlankLineBeforeDeclarationRule :
+             return
+         }
+
++        if (node.elementType == OBJECT_DECLARATION && node.treeParent.elementType == OBJECT_LITERAL) {
++            // Allow:
++            //   fun foo() =
++            //      object : Foo() {
++            //          // some declarations
++            //      }
++            return
++        }
++
+         node
+             .takeIf { it.psi is KtDeclaration }
+             ?.takeIf {

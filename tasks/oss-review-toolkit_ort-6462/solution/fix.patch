@@ -1,0 +1,220 @@
+diff --git a/analyzer/src/main/kotlin/Analyzer.kt b/analyzer/src/main/kotlin/Analyzer.kt
+index 2d120932f3112..a20987676f854 100644
+--- a/analyzer/src/main/kotlin/Analyzer.kt
++++ b/analyzer/src/main/kotlin/Analyzer.kt
+@@ -46,6 +46,7 @@ import org.ossreviewtoolkit.model.AnalyzerResult
+ import org.ossreviewtoolkit.model.AnalyzerRun
+ import org.ossreviewtoolkit.model.OrtResult
+ import org.ossreviewtoolkit.model.PackageCuration
++import org.ossreviewtoolkit.model.PackageCurations
+ import org.ossreviewtoolkit.model.Repository
+ import org.ossreviewtoolkit.model.ResolvedConfiguration
+ import org.ossreviewtoolkit.model.config.AnalyzerConfiguration
+@@ -356,17 +357,22 @@ private fun resolveConfiguration(
+     analyzerResult: AnalyzerResult,
+     curationProviders: List<Pair<String, PackageCurationProvider>>
+ ): ResolvedConfiguration {
+-    val packageCurations = mutableListOf<PackageCuration>()
++    val packageCurations = mutableMapOf<String, List<PackageCuration>>()
+ 
+     curationProviders.forEach { (id, curationProvider) ->
+         val (curations, duration) = measureTimedValue {
+             curationProvider.getCurationsFor(analyzerResult.packages).values.flatten().distinct()
+         }
+ 
+-        packageCurations += curations
++        packageCurations[id] = curations
+ 
+         Analyzer.logger().info { "Getting ${curations.size} package curation(s) from provider '$id' took $duration." }
+     }
+ 
+-    return ResolvedConfiguration(packageCurations)
++    return ResolvedConfiguration(
++        packageCurations = PackageCurations(
++            providers = curationProviders.map { (id, _) -> id },
++            data = packageCurations
++        )
++    )
+ }
+diff --git a/cli/src/main/kotlin/commands/EvaluatorCommand.kt b/cli/src/main/kotlin/commands/EvaluatorCommand.kt
+index bdef0aba33249..a197ff0fca58b 100644
+--- a/cli/src/main/kotlin/commands/EvaluatorCommand.kt
++++ b/cli/src/main/kotlin/commands/EvaluatorCommand.kt
+@@ -39,6 +39,7 @@ import java.time.Duration
+ 
+ import kotlin.time.toKotlinDuration
+ 
++import org.ossreviewtoolkit.analyzer.PackageCurationProviderFactory
+ import org.ossreviewtoolkit.analyzer.curation.FilePackageCurationProvider
+ import org.ossreviewtoolkit.cli.OrtCommand
+ import org.ossreviewtoolkit.cli.utils.OPTION_GROUP_CONFIGURATION
+@@ -172,6 +173,13 @@ class EvaluatorCommand : OrtCommand(
+         .convert { it.absoluteFile.normalize() }
+         .configurationGroup()
+ 
++    private val resolvePackageCurationProviderIds by option(
++        "--resolve-package-curation-provider-ids",
++        help = "The comma-separated list of package curation provider for which the package curations shall be " +
++                "re-resolved. All given providers must be configured and exist in the resolved configuration of the " +
++                "given ORT file"
++    ).split(",")
++
+     private val repositoryConfigurationFile by option(
+         "--repository-configuration-file",
+         help = "A file containing the repository configuration. If set, overrides the repository configuration " +
+@@ -276,6 +284,30 @@ class EvaluatorCommand : OrtCommand(
+             ortResultInput = ortResultInput.replacePackageCurations(curations)
+         }
+ 
++        resolvePackageCurationProviderIds?.filter { it.isNotBlank() }?.let { providerIds ->
++            val enabledProviders = PackageCurationProviderFactory.create(ortConfig.packageCurationProviders).toMap()
++            val packages = ortResultInput.analyzer?.result?.packages.orEmpty()
++            val curationsForProvider = ortResultInput.resolvedConfiguration.packageCurations.data.toMutableMap()
++
++            providerIds.forEach { providerId ->
++                require(providerId in ortResultInput.resolvedConfiguration.packageCurations.providers) {
++                    "The package curation provider with id '$providerId' is not present in the given ORT file."
++                }
++
++                curationsForProvider[providerId] = checkNotNull(enabledProviders[providerId]) {
++                    "The package curation provider with id '$providerId' is not configured."
++                }.getCurationsFor(packages).values.flatten().distinct()
++            }
++
++            val resolvedConfiguration = ortResultInput.resolvedConfiguration.copy(
++                packageCurations = ortResultInput.resolvedConfiguration.packageCurations.copy(
++                    data = curationsForProvider
++                )
++            )
++
++            ortResultInput = ortResultInput.copy(resolvedConfiguration = resolvedConfiguration)
++        }
++
+         val packageConfigurationProvider = if (ortConfig.enableRepositoryPackageConfigurations) {
+             CompositePackageConfigurationProvider(
+                 SimplePackageConfigurationProvider(ortResultInput.repository.config.packageConfigurations),
+diff --git a/model/src/main/kotlin/OrtResult.kt b/model/src/main/kotlin/OrtResult.kt
+index f9c4150931cba..52bfcbf66c154 100644
+--- a/model/src/main/kotlin/OrtResult.kt
++++ b/model/src/main/kotlin/OrtResult.kt
+@@ -134,7 +134,7 @@ data class OrtResult(
+         val packages = analyzer?.result?.packages.orEmpty().associateBy { it.id }
+         val curatedPackages = applyPackageCurations(
+             packages.values,
+-            resolvedConfiguration.packageCurations
++            resolvedConfiguration.getAllPackageCurations()
+         ).associateBy { it.metadata.id }
+ 
+         val allDependencies = packages.keys.toMutableSet()
+@@ -326,9 +326,16 @@ data class OrtResult(
+             packageIds.any { curation.isApplicable(it) }
+         }
+ 
++        // TODO: Implement replacing curations for a particular provider ID, without losing the curations from the
++        //       repository configuration if applicable.
++        val providerId = "Replaced"
++
+         return copy(
+             resolvedConfiguration = resolvedConfiguration.copy(
+-                packageCurations = applicableCurations
++                packageCurations = PackageCurations(
++                    providers = listOf(providerId),
++                    data = mapOf(providerId to applicableCurations)
++                )
+             )
+         )
+     }
+diff --git a/model/src/main/kotlin/ResolvedConfiguration.kt b/model/src/main/kotlin/ResolvedConfiguration.kt
+index 2c5707d690f9d..1813794028181 100644
+--- a/model/src/main/kotlin/ResolvedConfiguration.kt
++++ b/model/src/main/kotlin/ResolvedConfiguration.kt
+@@ -19,7 +19,12 @@
+ 
+ package org.ossreviewtoolkit.model
+ 
++import com.fasterxml.jackson.annotation.JsonIgnore
+ import com.fasterxml.jackson.annotation.JsonInclude
++import com.fasterxml.jackson.databind.annotation.JsonSerialize
++import com.fasterxml.jackson.databind.util.StdConverter
++
++import org.ossreviewtoolkit.utils.common.getDuplicates
+ 
+ /**
+  * A container which holds all resolved data which augments ORT's automatically obtained data, like
+@@ -28,10 +33,71 @@ import com.fasterxml.jackson.annotation.JsonInclude
+  * TODO: Add further data.
+  */
+ data class ResolvedConfiguration(
++    @JsonInclude(value = JsonInclude.Include.CUSTOM, valueFilter = PackageCurationsFilter::class)
++    val packageCurations: PackageCurations = PackageCurations(),
++) {
++    /**
++     * Return all [PackageCuration]s contained in this [ResolvedConfiguration] in highest-priority-first order.
++     */
++    @JsonIgnore
++    fun getAllPackageCurations(): List<PackageCuration> =
++        packageCurations.providers.flatMap { id ->
++            packageCurations.data[id].orEmpty()
++        }
++}
++
++@JsonSerialize(converter = PackageCurationsConverter::class)
++data class PackageCurations(
+     /**
+-     * All package curations applicable to the packages contained in the enclosing [OrtResult] ordered
+-     * highest-priority-first.
++     * All enabled providers ordered highest-priority-first.
+      */
+-    @JsonInclude(JsonInclude.Include.NON_EMPTY)
+-    val packageCurations: List<PackageCuration> = emptyList()
+-)
++    val providers: List<String> = emptyList(),
++
++    /**
++     * All package curations applicable to the packages contained in the enclosing [OrtResult].
++     */
++    val data: Map<String, List<PackageCuration>> = emptyMap()
++) {
++    @JsonIgnore
++    fun isEmpty(): Boolean =
++        providers.isEmpty() && data.isEmpty()
++
++    init {
++        val duplicateProviders = providers.getDuplicates()
++        require(duplicateProviders.isEmpty()) {
++            "The list 'providers' contains the following duplicates, which is not allowed: " +
++                    "${duplicateProviders.joinToStringSingleQuoted()}."
++        }
++
++        val invalidProviderReferences = data.keys.filter { it !in providers }
++        require(invalidProviderReferences.isEmpty()) {
++            "The following keys in 'data' reference a non-existing provider, which is not allowed: " +
++                    "${invalidProviderReferences.joinToStringSingleQuoted()}."
++        }
++    }
++}
++
++@Suppress("EqualsOrHashCode", "EqualsWithHashCodeExist") // The class is not supposed to be used with hashing.
++private class PackageCurationsFilter {
++    override fun equals(other: Any?): Boolean =
++        other is PackageCurations && other.isEmpty()
++}
++
++/**
++ * Sorts the keys of [PackageCurations.data] alphabetically and the values of [PackageCurations.data] by
++ * their [id][PackageCuration.id]. Drops entries for provider without curations and removes duplicate curations for
++ * each provider.
++ */
++private class PackageCurationsConverter : StdConverter<PackageCurations, PackageCurations>() {
++    override fun convert(value: PackageCurations): PackageCurations {
++        val sortedData = value.data.filter { (_, curations) ->
++            curations.isNotEmpty()
++        }.mapValues { (_, curations) ->
++            curations.distinct().sortedBy { curation -> curation.id }
++        }.toList().sortedBy { (provider, _) -> provider }.toMap()
++
++        return value.copy(data = sortedData)
++    }
++}
++
++private fun Collection<Any>.joinToStringSingleQuoted() = joinToString(prefix = "'", separator = "','", postfix = "'")

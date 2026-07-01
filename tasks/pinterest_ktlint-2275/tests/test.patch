@@ -1,0 +1,90 @@
+diff --git a/ktlint-rule-engine-core/src/test/kotlin/com/pinterest/ktlint/rule/engine/core/api/editorconfig/CommaSeparatedListValueParserTest.kt b/ktlint-rule-engine-core/src/test/kotlin/com/pinterest/ktlint/rule/engine/core/api/editorconfig/CommaSeparatedListValueParserTest.kt
+new file mode 100644
+index 0000000000..de16e49abb
+--- /dev/null
++++ b/ktlint-rule-engine-core/src/test/kotlin/com/pinterest/ktlint/rule/engine/core/api/editorconfig/CommaSeparatedListValueParserTest.kt
+@@ -0,0 +1,47 @@
++package com.pinterest.ktlint.rule.engine.core.api.editorconfig
++
++import org.assertj.core.api.Assertions.assertThat
++import org.ec4j.core.model.PropertyType
++import org.junit.jupiter.api.Test
++
++class CommaSeparatedListValueParserTest {
++    private val propertyType =
++        PropertyType.LowerCasingPropertyType(
++            "some-property-type",
++            null,
++            CommaSeparatedListValueParser(),
++        )
++
++    @Test
++    fun `Given a comma separated list property with value unset`() {
++        val actual = propertyType.parse("unset")
++
++        assertThat(actual.isUnset).isTrue()
++    }
++
++    @Test
++    fun `Given a comma separated list property with a single value`() {
++        val actual = propertyType.parse(SOME_VALUE_1)
++
++        assertThat(actual.parsed).containsExactlyInAnyOrder(SOME_VALUE_1)
++    }
++
++    @Test
++    fun `Given a comma separated list property with a multiple values`() {
++        val actual = propertyType.parse("$SOME_VALUE_1,$SOME_VALUE_2")
++
++        assertThat(actual.parsed).containsExactlyInAnyOrder(SOME_VALUE_1, SOME_VALUE_2)
++    }
++
++    @Test
++    fun `Given a comma separated list property with a multiple values and redundant space before or after value`() {
++        val actual = propertyType.parse(" $SOME_VALUE_1 , $SOME_VALUE_2 ")
++
++        assertThat(actual.parsed).containsExactlyInAnyOrder(SOME_VALUE_1, SOME_VALUE_2)
++    }
++
++    private companion object {
++        const val SOME_VALUE_1 = "some-value-1"
++        const val SOME_VALUE_2 = "some-value-2"
++    }
++}
+diff --git a/ktlint-ruleset-standard/src/test/kotlin/com/pinterest/ktlint/ruleset/standard/rules/FunctionNamingRuleTest.kt b/ktlint-ruleset-standard/src/test/kotlin/com/pinterest/ktlint/ruleset/standard/rules/FunctionNamingRuleTest.kt
+index 6231c28077..3172ef5139 100644
+--- a/ktlint-ruleset-standard/src/test/kotlin/com/pinterest/ktlint/ruleset/standard/rules/FunctionNamingRuleTest.kt
++++ b/ktlint-ruleset-standard/src/test/kotlin/com/pinterest/ktlint/ruleset/standard/rules/FunctionNamingRuleTest.kt
+@@ -1,5 +1,6 @@
+ package com.pinterest.ktlint.ruleset.standard.rules
+
++import com.pinterest.ktlint.ruleset.standard.rules.FunctionNamingRule.Companion.IGNORE_WHEN_ANNOTATED_WITH_PROPERTY
+ import com.pinterest.ktlint.test.KtLintAssertThat
+ import org.junit.jupiter.api.Nested
+ import org.junit.jupiter.api.Test
+@@ -196,4 +197,25 @@ class FunctionNamingRuleTest {
+             """.trimIndent()
+         functionNamingRuleAssertThat(code).hasNoLintViolations()
+     }
++
++    @Test
++    fun `Issue 2259 - Given a fun which is to be ignored because it is annotated with a blacklisted annotation`() {
++        val code =
++            """
++            @Bar
++            @Foo
++            fun SomeFooBar()
++
++            @Composable
++            @Foo
++            fun SomeComposableFoo()
++
++            @Bar
++            @Composable
++            fun SomeComposableBar()
++            """.trimIndent()
++        functionNamingRuleAssertThat(code)
++            .withEditorConfigOverride(IGNORE_WHEN_ANNOTATED_WITH_PROPERTY to "Composable, Foo")
++            .hasNoLintViolations()
++    }
+ }

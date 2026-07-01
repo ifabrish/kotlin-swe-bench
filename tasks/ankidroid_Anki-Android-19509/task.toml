@@ -1,0 +1,21 @@
+[metadata.source]
+repository_owner = "ankidroid"
+repository_name = "Anki-Android"
+repository_url = "https://github.com/ankidroid/Anki-Android"
+code_change_type = "pr"
+code_change_id = "19509"
+code_change_url = "https://github.com/ankidroid/Anki-Android/pull/19509"
+issue_url = "https://github.com/ankidroid/Anki-Android/issues/13207"
+
+[verifier]
+implemented = false
+timeout_sec = 900.0
+
+[agent]
+timeout_sec = 1800.0
+
+[environment]
+build_timeout_sec = 1800.0
+cpus = 4
+memory_mb = 10240
+allow_internet = true

@@ -1,0 +1,583 @@
+diff --git a/core/api/core.api b/core/api/core.api
+index fa71b6b95a..21d4906f08 100644
+--- a/core/api/core.api
++++ b/core/api/core.api
+@@ -9938,8 +9938,6 @@ public final class org/jetbrains/kotlinx/dataframe/impl/UtilsKt {
+ 	public static final fun getColumnName (Lkotlin/reflect/KCallable;)Ljava/lang/String;
+ 	public static final fun getColumnName (Lkotlin/reflect/KFunction;)Ljava/lang/String;
+ 	public static final fun getColumnName (Lkotlin/reflect/KProperty;)Ljava/lang/String;
+-	public static final fun getDELIMITED_STRING_REGEX ()Lkotlin/text/Regex;
+-	public static final fun getDELIMITERS_REGEX ()Lkotlin/text/Regex;
+ 	public static final fun headPlusArray (B[B)[B
+ 	public static final fun headPlusArray (C[C)[C
+ 	public static final fun headPlusArray (D[D)[D
+@@ -9948,7 +9946,8 @@ public final class org/jetbrains/kotlinx/dataframe/impl/UtilsKt {
+ 	public static final fun headPlusArray (J[J)[J
+ 	public static final fun headPlusArray (S[S)[S
+ 	public static final fun headPlusArray (Z[Z)[Z
+-	public static final fun toCamelCaseByDelimiters (Ljava/lang/String;Lkotlin/text/Regex;)Ljava/lang/String;
++	public static final fun toCamelCaseByDelimiters (Ljava/lang/String;Lkotlin/text/Regex;Ljava/lang/String;)Ljava/lang/String;
++	public static synthetic fun toCamelCaseByDelimiters$default (Ljava/lang/String;Lkotlin/text/Regex;Ljava/lang/String;ILjava/lang/Object;)Ljava/lang/String;
+ 	public static final fun zero (Lkotlin/reflect/KClass;)Ljava/lang/Number;
+ 	public static final fun zeroOrNull (Lkotlin/reflect/KClass;)Ljava/lang/Number;
+ }
+diff --git a/core/generated-sources/src/main/kotlin/org/jetbrains/kotlinx/dataframe/api/rename.kt b/core/generated-sources/src/main/kotlin/org/jetbrains/kotlinx/dataframe/api/rename.kt
+index 7f0c79aa8d..326221ada1 100644
+--- a/core/generated-sources/src/main/kotlin/org/jetbrains/kotlinx/dataframe/api/rename.kt
++++ b/core/generated-sources/src/main/kotlin/org/jetbrains/kotlinx/dataframe/api/rename.kt
+@@ -13,8 +13,6 @@ import org.jetbrains.kotlinx.dataframe.columns.ColumnWithPath
+ import org.jetbrains.kotlinx.dataframe.columns.FrameColumn
+ import org.jetbrains.kotlinx.dataframe.columns.renamedReference
+ import org.jetbrains.kotlinx.dataframe.columns.toColumnSet
+-import org.jetbrains.kotlinx.dataframe.impl.DELIMITED_STRING_REGEX
+-import org.jetbrains.kotlinx.dataframe.impl.DELIMITERS_REGEX
+ import org.jetbrains.kotlinx.dataframe.impl.api.renameImpl
+ import org.jetbrains.kotlinx.dataframe.impl.columnName
+ import org.jetbrains.kotlinx.dataframe.impl.toCamelCaseByDelimiters
+@@ -46,23 +44,44 @@ public class RenameClause<T, C>(internal val df: DataFrame<T>, internal val colu
+ }
+ 
+ /**
+- * ## Rename to camelCase
++ * ## Rename to "camelCase"
++ *
++ * This function renames all columns in this [DataFrame] to the "camelCase" format.
++ *
++ * Removes all delimiters between words and capitalizes each word except the first one.
++ * Adds an underscore between consecutive numbers.
++ * If the string does not contain any letters or numbers, it remains unchanged.
++ *
++ * This function supports converting names from `snake_case`, `PascalCase`, and other delimited formats
++ * into a consistent "camelCase" representation.
+  *
+- * This function renames all columns to `camelCase` by replacing all [delimiters][DELIMITERS_REGEX]
+- * and converting the first char to lowercase.
+- * Even [DataFrames][DataFrame] inside [FrameColumns][FrameColumn] are traversed recursively.
++ * [DataFrames][DataFrame] inside [FrameColumns][FrameColumn] are traversed recursively.
++ *
++ * Returns a [DataFrame] with updated column names.
++ *
++ * ### Examples:
++ * ```
++ * "snake_case_name" -> "snakeCaseName"
++ * "PascalCaseName" -> "pascalCaseName"
++ * "doner-case-name" -> "donerCaseName"
++ * "UPPER_CASE_NAME -> upperCaseName"
++ * ```
++ *
++ * @return a [DataFrame] with column names converted to "camelCase" format.
+  */
+ @Refine
+ @Interpretable("RenameToCamelCase")
+ public fun <T> DataFrame<T>.renameToCamelCase(): DataFrame<T> =
+     // recursively rename all columns written with delimiters or starting with a capital to camel case
+     rename {
+-        colsAtAnyDepth { it.name() matches DELIMITED_STRING_REGEX || it.name[0].isUpperCase() }
++        colsAtAnyDepth()
+     }.toCamelCase()
+         // take all frame columns at any depth and call renameToCamelCase() on all dataframes inside
+         .update {
+             colsAtAnyDepth().colsOf<AnyFrame>()
+-        }.with { it.renameToCamelCase() }
++        }.with {
++            it.renameToCamelCase()
++        }
+ 
+ @AccessApiOverload
+ public fun <T, C> RenameClause<T, C>.into(vararg newColumns: ColumnReference<*>): DataFrame<T> =
+@@ -80,10 +99,27 @@ public fun <T, C> RenameClause<T, C>.into(transform: (ColumnWithPath<C>) -> Stri
+     renameImpl(transform)
+ 
+ /**
+- * ## Rename to camelCase
++ * ## Rename to "camelCase"
+  *
+- * Renames the selected columns to `camelCase` by replacing all [delimiters][DELIMITERS_REGEX]
+- * and converting the first char to lowercase.
++ * Renames the columns, previously selected with [rename] to "camelCase" format.
++ * All delimiters between words are removed, words are capitalized except for the first one.
++ * Places underscore between numbers.
++ * If the string does not contain any letters or numbers, it remains unchanged.
++ *
++ * Returns a [DataFrame] with updated column names.
++ *
++ * This function supports converting names from `snake_case`, `PascalCase`, and other delimited formats
++ * into a consistent "camelCase" representation.
++ *
++ * ### Examples:
++ * ```
++ * "snake_case_name" -> "snakeCaseName"
++ * "PascalCaseName" -> "pascalCaseName"
++ * "doner-case-name" -> "donerCaseName"
++ * "UPPER_CASE_NAME -> upperCaseName"
++ * ```
++ *
++ * @return a [DataFrame] with column names converted to "camelCase" format.
+  */
+ @Refine
+ @Interpretable("RenameToCamelCaseClause")
+@@ -96,15 +132,29 @@ public fun <T, C> RenameClause<T, C>.toCamelCase(): DataFrame<T> = into { it.ren
+ /**
+  * ## Rename to camelCase
+  *
+- * Renames this column to `camelCase` by replacing all [delimiters][DELIMITERS_REGEX]
+- * and converting the first char to lowercase.
++ * Renames this column to "camelCase" format.
++ * All delimiters between words are removed, words are capitalized except for the first one.
++ * Places underscore between numbers.
++ * If the string does not contain any letters or numbers, it remains unchanged.
++ *
++ * Returns a [ColumnReference] with updated name.
++ *
++ * This function supports converting names from `snake_case`, `PascalCase`, and other delimited formats
++ * into a consistent "camelCase" representation.
++ *
++ * ### Examples:
++ * ```
++ * "snake_case_name" -> "snakeCaseName"
++ * "PascalCaseName" -> "pascalCaseName"
++ * "doner-case-name" -> "donerCaseName"
++ * "UPPER_CASE_NAME -> upperCaseName"
++ * ```
++ * @return a [ColumnReference] with the name converted to "camelCase" format.
+  */
+ @Suppress("UNCHECKED_CAST")
+ public fun <T, C : ColumnReference<T>> C.renameToCamelCase(): C =
+     rename(
+-        this.name()
+-            .toCamelCaseByDelimiters(DELIMITERS_REGEX)
+-            .replaceFirstChar { it.lowercaseChar() },
++        this.name().toCamelCaseByDelimiters(),
+     ) as C
+ 
+ @Suppress("UNCHECKED_CAST")
+diff --git a/core/generated-sources/src/main/kotlin/org/jetbrains/kotlinx/dataframe/impl/Utils.kt b/core/generated-sources/src/main/kotlin/org/jetbrains/kotlinx/dataframe/impl/Utils.kt
+index 9372f1db1b..453ecf8b33 100644
+--- a/core/generated-sources/src/main/kotlin/org/jetbrains/kotlinx/dataframe/impl/Utils.kt
++++ b/core/generated-sources/src/main/kotlin/org/jetbrains/kotlinx/dataframe/impl/Utils.kt
+@@ -337,28 +337,118 @@ internal fun <T : Comparable<T>> T.between(left: T, right: T, includeBoundaries:
+         this > left && this < right
+     }
+ 
+-private const val DELIMITERS = "[_\\s]"
+-public val DELIMITERS_REGEX: Regex = DELIMITERS.toRegex()
+-public val DELIMITED_STRING_REGEX: Regex = ".+$DELIMITERS.+".toRegex()
++// Single regex to split words by non-alphanumeric characters, camelCase, and numbers
++internal val CAMEL_DEFAULT_DELIMITERS_REGEX =
++    (
++        "[^\\p{L}0-9]+|(?<=[\\p{Ll}])(?=[\\p{Lu}])|(?<=[\\p{Lu}])" +
++            "(?=[\\p{Lu}][\\p{Ll}])|(?<=\\d)(?=[\\p{L}])|(?<=[\\p{L}])(?=\\d)"
++    )
++        .toRegex()
+ 
+-internal val CAMEL_REGEX = "(?<=[a-zA-Z])[A-Z]".toRegex()
++/**
++ * Converts a string into lowerCamelCase using [delimiters].
++ *
++ * - Splits this string matching given [delimiters] regular expression
++ * (by default, via [CAMEL_DEFAULT_DELIMITERS_REGEX] - any characters that are not letters or digits).
++ * - If the string does not contain any letters or numbers, it remains unchanged.
++ * - Places underscore ("_") between consecutive numbers (that were split before).
++ * - The first word remains in lowercase, and subsequent words are capitalized.
++ *
++ * Default behavior (with [CAMEL_DEFAULT_DELIMITERS_REGEX]):
++ *
++ * ```
++ * "hello_world" -> "helloWorld"
++ * "HelloWorld" -> "helloWorld"
++ * "json.parser.Config" -> "jsonParserConfig"
++ * "my.var_name test" -> "myVarNameTest"
++ * "thirdColumn" -> "thirdColumn"
++ * "someHTMLParser" -> "someHtmlParser"
++ * "RESTApi" -> "restApi"
++ * "OAuth2Token" -> "oAuth2Token"
++ * "GraphQLQuery" -> "graphQlQuery"
++ * "TCP_3_PROTOCOL" -> "tcp3Protocol"
++ * "123hello_world456" -> "123HelloWorld456"
++ * "API_Response_2023" -> "apiResponse2023"
++ * "UPPER_case-LOWER" -> "upperCaseLower"
++ * "12parse34CamelCase" -> "12Parse34CamelCase"
++ * "snake_case_example" -> "snakeCaseExample"
++ * "dot.separated.words" -> "dotSeparatedWords"
++ * "kebab-case-example" -> "kebabCaseExample"
++ * "MIXED_Case_with_123Numbers" -> "mixedCaseWith123Numbers"
++ * "___!!!___" -> "___!!!___"
++ * "1000.2000.3000" -> "1000_2000_3000"
++ * "UPPERCASE" -> "uppercase"
++ * "alreadyCamelCased" -> "alreadyCamelCased"
++ * "justNumbers123" -> "justNumbers123"
++ * "Just_Special$Chars!!" -> "justSpecialChars"
++ * "singleword" -> "singleword"
++ * "word_with_underscores_and-dashes" -> "wordWithUnderscoresAndDashes"
++ * "10-20-aa" -> "10_20Aa"
++ * ```
++ *
++ * @return the formatted string in lowerCamelCase.
++ */
++public fun String.toCamelCaseByDelimiters(
++    delimiters: Regex = CAMEL_DEFAULT_DELIMITERS_REGEX,
++    numberSeparator: String = "_",
++): String =
++    if (!this.any { it.isLetter() || it.isDigit() }) {
++        this // If the string has no letters, return it unchanged
++    } else {
++        split(delimiters)
++            .filter { it.isNotBlank() }
++            .map { it.lowercase() }
++            .joinNumbers(numberSeparator)
++            .joinToCamelCaseString()
++    }
++
++/**
++ * Joins consecutive numbers in a list with the given [separator].
++ * Assumes that all numbers and strings are separated (after splitting via [CAMEL_DEFAULT_DELIMITERS_REGEX]).
++ */
++private fun List<String>.joinNumbers(separator: CharSequence): List<String> {
++    val result = mutableListOf<String>()
++    var i = 0
++
++    while (i < this.size) {
++        val current = this[i]
++        if (current.all { it.isDigit() }) { // Check if the current element is a number
++            val numberGroup = mutableListOf(current)
++            while (i + 1 < this.size && this[i + 1].all { it.isDigit() }) {
++                numberGroup.add(this[i + 1])
++                i++
++            }
++            result.add(numberGroup.joinToString(separator)) // Join consecutive numbers with "_"
++        } else {
++            result.add(current)
++        }
++        i++
++    }
++    return result
++}
+ 
+-public fun String.toCamelCaseByDelimiters(delimiters: Regex): String = split(delimiters).joinToCamelCaseString()
++/**
++ * Joins a list of words into lowerCamelCase format.
++ * - The first word is converted to lowercase.
++ * - Subsequent words start with an uppercase letter.
++ */
++private fun List<String>.joinToCamelCaseString(): String =
++    mapIndexed { index, word ->
++        if (index == 0) word.lowercase() else word.replaceFirstChar { it.uppercaseChar() }
++    }.joinToString("")
++
++internal val CAMEL_LETTERS_REGEX = "(?<=[a-zA-Z])[A-Z]".toRegex()
+ 
+ internal fun String.toSnakeCase(): String =
+     if ("[A-Z_]+".toRegex().matches(this)) {
+         this
+     } else {
+-        CAMEL_REGEX
++        CAMEL_LETTERS_REGEX
+             .replace(this) { "_${it.value}" }
+             .replace(" ", "_")
+             .lowercase()
+     }
+ 
+-internal fun List<String>.joinToCamelCaseString(): String =
+-    joinToString(separator = "") { it.replaceFirstChar { it.uppercaseChar() } }
+-        .replaceFirstChar { it.lowercaseChar() }
+-
+ /** Returns `true` if this callable is a getter-like function.
+  *
+  * A callable is considered getter-like if it is either a property getter,
+diff --git a/core/src/main/kotlin/org/jetbrains/kotlinx/dataframe/api/rename.kt b/core/src/main/kotlin/org/jetbrains/kotlinx/dataframe/api/rename.kt
+index 3494824caf..342d3f55eb 100644
+--- a/core/src/main/kotlin/org/jetbrains/kotlinx/dataframe/api/rename.kt
++++ b/core/src/main/kotlin/org/jetbrains/kotlinx/dataframe/api/rename.kt
+@@ -15,8 +15,6 @@ import org.jetbrains.kotlinx.dataframe.columns.renamedReference
+ import org.jetbrains.kotlinx.dataframe.columns.toColumnSet
+ import org.jetbrains.kotlinx.dataframe.documentation.AccessApiLink
+ import org.jetbrains.kotlinx.dataframe.documentation.DslGrammarTemplateColumnsSelectionDsl.DslGrammarTemplate
+-import org.jetbrains.kotlinx.dataframe.impl.DELIMITED_STRING_REGEX
+-import org.jetbrains.kotlinx.dataframe.impl.DELIMITERS_REGEX
+ import org.jetbrains.kotlinx.dataframe.impl.api.renameImpl
+ import org.jetbrains.kotlinx.dataframe.impl.columnName
+ import org.jetbrains.kotlinx.dataframe.impl.toCamelCaseByDelimiters
+@@ -48,23 +46,44 @@ public class RenameClause<T, C>(internal val df: DataFrame<T>, internal val colu
+ }
+ 
+ /**
+- * ## Rename to camelCase
++ * ## Rename to "camelCase"
++ *
++ * This function renames all columns in this [DataFrame] to the "camelCase" format.
++ *
++ * Removes all delimiters between words and capitalizes each word except the first one.
++ * Adds an underscore between consecutive numbers.
++ * If the string does not contain any letters or numbers, it remains unchanged.
++ *
++ * This function supports converting names from `snake_case`, `PascalCase`, and other delimited formats
++ * into a consistent "camelCase" representation.
+  *
+- * This function renames all columns to `camelCase` by replacing all [delimiters][DELIMITERS_REGEX]
+- * and converting the first char to lowercase.
+- * Even [DataFrames][DataFrame] inside [FrameColumns][FrameColumn] are traversed recursively.
++ * [DataFrames][DataFrame] inside [FrameColumns][FrameColumn] are traversed recursively.
++ *
++ * Returns a [DataFrame] with updated column names.
++ *
++ * ### Examples:
++ * ```
++ * "snake_case_name" -> "snakeCaseName"
++ * "PascalCaseName" -> "pascalCaseName"
++ * "doner-case-name" -> "donerCaseName"
++ * "UPPER_CASE_NAME -> upperCaseName"
++ * ```
++ *
++ * @return a [DataFrame] with column names converted to "camelCase" format.
+  */
+ @Refine
+ @Interpretable("RenameToCamelCase")
+ public fun <T> DataFrame<T>.renameToCamelCase(): DataFrame<T> =
+     // recursively rename all columns written with delimiters or starting with a capital to camel case
+     rename {
+-        colsAtAnyDepth { it.name() matches DELIMITED_STRING_REGEX || it.name[0].isUpperCase() }
++        colsAtAnyDepth()
+     }.toCamelCase()
+         // take all frame columns at any depth and call renameToCamelCase() on all dataframes inside
+         .update {
+             colsAtAnyDepth().colsOf<AnyFrame>()
+-        }.with { it.renameToCamelCase() }
++        }.with {
++            it.renameToCamelCase()
++        }
+ 
+ @AccessApiOverload
+ public fun <T, C> RenameClause<T, C>.into(vararg newColumns: ColumnReference<*>): DataFrame<T> =
+@@ -82,10 +101,27 @@ public fun <T, C> RenameClause<T, C>.into(transform: (ColumnWithPath<C>) -> Stri
+     renameImpl(transform)
+ 
+ /**
+- * ## Rename to camelCase
++ * ## Rename to "camelCase"
+  *
+- * Renames the selected columns to `camelCase` by replacing all [delimiters][DELIMITERS_REGEX]
+- * and converting the first char to lowercase.
++ * Renames the columns, previously selected with [rename] to "camelCase" format.
++ * All delimiters between words are removed, words are capitalized except for the first one.
++ * Places underscore between numbers.
++ * If the string does not contain any letters or numbers, it remains unchanged.
++ *
++ * Returns a [DataFrame] with updated column names.
++ *
++ * This function supports converting names from `snake_case`, `PascalCase`, and other delimited formats
++ * into a consistent "camelCase" representation.
++ *
++ * ### Examples:
++ * ```
++ * "snake_case_name" -> "snakeCaseName"
++ * "PascalCaseName" -> "pascalCaseName"
++ * "doner-case-name" -> "donerCaseName"
++ * "UPPER_CASE_NAME -> upperCaseName"
++ * ```
++ *
++ * @return a [DataFrame] with column names converted to "camelCase" format.
+  */
+ @Refine
+ @Interpretable("RenameToCamelCaseClause")
+@@ -98,15 +134,29 @@ public fun <T, C> RenameClause<T, C>.toCamelCase(): DataFrame<T> = into { it.ren
+ /**
+  * ## Rename to camelCase
+  *
+- * Renames this column to `camelCase` by replacing all [delimiters][DELIMITERS_REGEX]
+- * and converting the first char to lowercase.
++ * Renames this column to "camelCase" format.
++ * All delimiters between words are removed, words are capitalized except for the first one.
++ * Places underscore between numbers.
++ * If the string does not contain any letters or numbers, it remains unchanged.
++ *
++ * Returns a [ColumnReference] with updated name.
++ *
++ * This function supports converting names from `snake_case`, `PascalCase`, and other delimited formats
++ * into a consistent "camelCase" representation.
++ *
++ * ### Examples:
++ * ```
++ * "snake_case_name" -> "snakeCaseName"
++ * "PascalCaseName" -> "pascalCaseName"
++ * "doner-case-name" -> "donerCaseName"
++ * "UPPER_CASE_NAME -> upperCaseName"
++ * ```
++ * @return a [ColumnReference] with the name converted to "camelCase" format.
+  */
+ @Suppress("UNCHECKED_CAST")
+ public fun <T, C : ColumnReference<T>> C.renameToCamelCase(): C =
+     rename(
+-        this.name()
+-            .toCamelCaseByDelimiters(DELIMITERS_REGEX)
+-            .replaceFirstChar { it.lowercaseChar() },
++        this.name().toCamelCaseByDelimiters(),
+     ) as C
+ 
+ @Suppress("UNCHECKED_CAST")
+diff --git a/core/src/main/kotlin/org/jetbrains/kotlinx/dataframe/impl/Utils.kt b/core/src/main/kotlin/org/jetbrains/kotlinx/dataframe/impl/Utils.kt
+index 7716b61d15..1d14161c73 100644
+--- a/core/src/main/kotlin/org/jetbrains/kotlinx/dataframe/impl/Utils.kt
++++ b/core/src/main/kotlin/org/jetbrains/kotlinx/dataframe/impl/Utils.kt
+@@ -337,28 +337,118 @@ internal fun <T : Comparable<T>> T.between(left: T, right: T, includeBoundaries:
+         this > left && this < right
+     }
+ 
+-private const val DELIMITERS = "[_\\s]"
+-public val DELIMITERS_REGEX: Regex = DELIMITERS.toRegex()
+-public val DELIMITED_STRING_REGEX: Regex = ".+$DELIMITERS.+".toRegex()
++// Single regex to split words by non-alphanumeric characters, camelCase, and numbers
++internal val CAMEL_DEFAULT_DELIMITERS_REGEX =
++    (
++        "[^\\p{L}0-9]+|(?<=[\\p{Ll}])(?=[\\p{Lu}])|(?<=[\\p{Lu}])" +
++            "(?=[\\p{Lu}][\\p{Ll}])|(?<=\\d)(?=[\\p{L}])|(?<=[\\p{L}])(?=\\d)"
++    )
++        .toRegex()
+ 
+-internal val CAMEL_REGEX = "(?<=[a-zA-Z])[A-Z]".toRegex()
++/**
++ * Converts a string into lowerCamelCase using [delimiters].
++ *
++ * - Splits this string matching given [delimiters] regular expression
++ * (by default, via [CAMEL_DEFAULT_DELIMITERS_REGEX] - any characters that are not letters or digits).
++ * - If the string does not contain any letters or numbers, it remains unchanged.
++ * - Places underscore ("_") between consecutive numbers (that were split before).
++ * - The first word remains in lowercase, and subsequent words are capitalized.
++ *
++ * Default behavior (with [CAMEL_DEFAULT_DELIMITERS_REGEX]):
++ *
++ * ```
++ * "hello_world" -> "helloWorld"
++ * "HelloWorld" -> "helloWorld"
++ * "json.parser.Config" -> "jsonParserConfig"
++ * "my.var_name test" -> "myVarNameTest"
++ * "thirdColumn" -> "thirdColumn"
++ * "someHTMLParser" -> "someHtmlParser"
++ * "RESTApi" -> "restApi"
++ * "OAuth2Token" -> "oAuth2Token"
++ * "GraphQLQuery" -> "graphQlQuery"
++ * "TCP_3_PROTOCOL" -> "tcp3Protocol"
++ * "123hello_world456" -> "123HelloWorld456"
++ * "API_Response_2023" -> "apiResponse2023"
++ * "UPPER_case-LOWER" -> "upperCaseLower"
++ * "12parse34CamelCase" -> "12Parse34CamelCase"
++ * "snake_case_example" -> "snakeCaseExample"
++ * "dot.separated.words" -> "dotSeparatedWords"
++ * "kebab-case-example" -> "kebabCaseExample"
++ * "MIXED_Case_with_123Numbers" -> "mixedCaseWith123Numbers"
++ * "___!!!___" -> "___!!!___"
++ * "1000.2000.3000" -> "1000_2000_3000"
++ * "UPPERCASE" -> "uppercase"
++ * "alreadyCamelCased" -> "alreadyCamelCased"
++ * "justNumbers123" -> "justNumbers123"
++ * "Just_Special\$Chars!!" -> "justSpecialChars"
++ * "singleword" -> "singleword"
++ * "word_with_underscores_and-dashes" -> "wordWithUnderscoresAndDashes"
++ * "10-20-aa" -> "10_20Aa"
++ * ```
++ *
++ * @return the formatted string in lowerCamelCase.
++ */
++public fun String.toCamelCaseByDelimiters(
++    delimiters: Regex = CAMEL_DEFAULT_DELIMITERS_REGEX,
++    numberSeparator: String = "_",
++): String =
++    if (!this.any { it.isLetter() || it.isDigit() }) {
++        this // If the string has no letters, return it unchanged
++    } else {
++        split(delimiters)
++            .filter { it.isNotBlank() }
++            .map { it.lowercase() }
++            .joinNumbers(numberSeparator)
++            .joinToCamelCaseString()
++    }
++
++/**
++ * Joins consecutive numbers in a list with the given [separator].
++ * Assumes that all numbers and strings are separated (after splitting via [CAMEL_DEFAULT_DELIMITERS_REGEX]).
++ */
++private fun List<String>.joinNumbers(separator: CharSequence): List<String> {
++    val result = mutableListOf<String>()
++    var i = 0
++
++    while (i < this.size) {
++        val current = this[i]
++        if (current.all { it.isDigit() }) { // Check if the current element is a number
++            val numberGroup = mutableListOf(current)
++            while (i + 1 < this.size && this[i + 1].all { it.isDigit() }) {
++                numberGroup.add(this[i + 1])
++                i++
++            }
++            result.add(numberGroup.joinToString(separator)) // Join consecutive numbers with "_"
++        } else {
++            result.add(current)
++        }
++        i++
++    }
++    return result
++}
+ 
+-public fun String.toCamelCaseByDelimiters(delimiters: Regex): String = split(delimiters).joinToCamelCaseString()
++/**
++ * Joins a list of words into lowerCamelCase format.
++ * - The first word is converted to lowercase.
++ * - Subsequent words start with an uppercase letter.
++ */
++private fun List<String>.joinToCamelCaseString(): String =
++    mapIndexed { index, word ->
++        if (index == 0) word.lowercase() else word.replaceFirstChar { it.uppercaseChar() }
++    }.joinToString("")
++
++internal val CAMEL_LETTERS_REGEX = "(?<=[a-zA-Z])[A-Z]".toRegex()
+ 
+ internal fun String.toSnakeCase(): String =
+     if ("[A-Z_]+".toRegex().matches(this)) {
+         this
+     } else {
+-        CAMEL_REGEX
++        CAMEL_LETTERS_REGEX
+             .replace(this) { "_${it.value}" }
+             .replace(" ", "_")
+             .lowercase()
+     }
+ 
+-internal fun List<String>.joinToCamelCaseString(): String =
+-    joinToString(separator = "") { it.replaceFirstChar { it.uppercaseChar() } }
+-        .replaceFirstChar { it.lowercaseChar() }
+-
+ /** @include [KCallable.isGetterLike] */
+ internal fun KFunction<*>.isGetterLike(): Boolean =
+     (name.startsWith("get") || name.startsWith("is")) &&
+diff --git a/dataframe-openapi-generator/src/main/kotlin/org/jetbrains/kotlinx/dataframe/io/utils.kt b/dataframe-openapi-generator/src/main/kotlin/org/jetbrains/kotlinx/dataframe/io/utils.kt
+index 959dbe571a..aaa96e1602 100644
+--- a/dataframe-openapi-generator/src/main/kotlin/org/jetbrains/kotlinx/dataframe/io/utils.kt
++++ b/dataframe-openapi-generator/src/main/kotlin/org/jetbrains/kotlinx/dataframe/io/utils.kt
+@@ -3,7 +3,6 @@ package org.jetbrains.kotlinx.dataframe.io
+ import org.jetbrains.kotlinx.dataframe.codeGen.FieldType
+ import org.jetbrains.kotlinx.dataframe.codeGen.GeneratedField
+ import org.jetbrains.kotlinx.dataframe.codeGen.ValidFieldName
+-import org.jetbrains.kotlinx.dataframe.impl.DELIMITERS_REGEX
+ import org.jetbrains.kotlinx.dataframe.impl.toCamelCaseByDelimiters
+ import org.jetbrains.kotlinx.dataframe.schema.ColumnSchema
+ import kotlin.reflect.typeOf
+@@ -18,7 +17,7 @@ internal fun String.withoutTopInterfaceName(topInterfaceName: ValidFieldName): S
+         this
+     }
+ 
+-internal fun String.snakeToLowerCamelCase(): String = toCamelCaseByDelimiters(DELIMITERS_REGEX)
++internal fun String.snakeToLowerCamelCase(): String = toCamelCaseByDelimiters()
+ 
+ internal fun String.snakeToUpperCamelCase(): String =
+     snakeToLowerCamelCase()
+diff --git a/docs/StardustDocs/topics/readSqlFromCustomDatabase.md b/docs/StardustDocs/topics/readSqlFromCustomDatabase.md
+index be70f88a31..57e1931630 100644
+--- a/docs/StardustDocs/topics/readSqlFromCustomDatabase.md
++++ b/docs/StardustDocs/topics/readSqlFromCustomDatabase.md
+@@ -152,7 +152,7 @@ fun main() {
+ 
+         val df = con
+             .readDataFrame("SELECT * FROM orders", dbType = HSQLDB)
+-            .rename { all() }.into { it.name.lowercase(Locale.getDefault()).toCamelCaseByDelimiters(DELIMITERS_REGEX) }
++            .renameToCamelCase()
+             .cast<Orders>(verify = true)
+ 
+         df.filter { it.price > 800 }.print()

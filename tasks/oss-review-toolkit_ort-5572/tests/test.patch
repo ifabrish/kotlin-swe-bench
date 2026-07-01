@@ -1,0 +1,26 @@
+diff --git a/analyzer/src/test/kotlin/AnalyzerResultBuilderTest.kt b/analyzer/src/test/kotlin/AnalyzerResultBuilderTest.kt
+index 2f590379b61c7..35f6d512e05a8 100644
+--- a/analyzer/src/test/kotlin/AnalyzerResultBuilderTest.kt
++++ b/analyzer/src/test/kotlin/AnalyzerResultBuilderTest.kt
+@@ -23,6 +23,7 @@ import com.fasterxml.jackson.module.kotlin.readValue
+ 
+ import io.kotest.assertions.throwables.shouldThrow
+ import io.kotest.core.spec.style.WordSpec
++import io.kotest.matchers.collections.beEmpty
+ import io.kotest.matchers.collections.containExactlyInAnyOrder
+ import io.kotest.matchers.collections.shouldContainExactly
+ import io.kotest.matchers.collections.shouldHaveSize
+@@ -370,6 +371,13 @@ class AnalyzerResultBuilderTest : WordSpec() {
+                     }
+                 }
+             }
++
++            "handle a result without dependencies" {
++                val emptyResult = AnalyzerResultBuilder().build()
++
++                emptyResult.projects should beEmpty()
++                emptyResult.packages should beEmpty()
++            }
+         }
+     }
+ }

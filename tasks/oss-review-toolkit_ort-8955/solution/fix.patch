@@ -1,0 +1,291 @@
+diff --git a/clients/bazel-module-registry/src/main/kotlin/LocalBazelModuleRegistryService.kt b/clients/bazel-module-registry/src/main/kotlin/LocalBazelModuleRegistryService.kt
+index f1c69cc97ca68..6bb39b31ce575 100644
+--- a/clients/bazel-module-registry/src/main/kotlin/LocalBazelModuleRegistryService.kt
++++ b/clients/bazel-module-registry/src/main/kotlin/LocalBazelModuleRegistryService.kt
+@@ -24,12 +24,35 @@ import java.io.File
+ import kotlinx.serialization.Serializable
+ import kotlinx.serialization.json.decodeFromStream
+ 
++import org.apache.logging.log4j.kotlin.logger
++
+ private const val BAZEL_MODULES_DIR = "modules"
+ 
+ /**
+  * A Bazel registry which is located on the local file system.
+  */
+ class LocalBazelModuleRegistryService(directory: File) : BazelModuleRegistryService {
++    companion object {
++        /** A prefix for URLs pointing to local files. */
++        private const val FILE_URL_PREFIX = "file://"
++
++        /** Constant for a placeholder that is replaced by the current project directory. */
++        private const val WORKSPACE_PLACEHOLDER = "%workspace%"
++
++        /**
++         * Create a [LocalBazelModuleRegistryService] if the given [url] points to a local file. In this case,
++         * also replace the placeholder for the workspace by the given [projectDir]. Return *null* for all other URLs.
++         */
++        fun createForLocalUrl(url: String?, projectDir: File): LocalBazelModuleRegistryService? =
++            url.takeIf { it?.startsWith(FILE_URL_PREFIX) == true }?.let { fileUrl ->
++                val directory = fileUrl.removePrefix(FILE_URL_PREFIX)
++                    .replace(WORKSPACE_PLACEHOLDER, projectDir.absolutePath)
++
++                logger.info { "Creating local Bazel module registry at '$directory'." }
++                LocalBazelModuleRegistryService(File(directory))
++            }
++    }
++
+     private val moduleDirectory: File
+     private val bazelRegistry: BazelRegistry
+ 
+diff --git a/clients/bazel-module-registry/src/main/kotlin/RemoteBazelModuleRegistryService.kt b/clients/bazel-module-registry/src/main/kotlin/RemoteBazelModuleRegistryService.kt
+index c632530aca1de..fdc2e96b31110 100644
+--- a/clients/bazel-module-registry/src/main/kotlin/RemoteBazelModuleRegistryService.kt
++++ b/clients/bazel-module-registry/src/main/kotlin/RemoteBazelModuleRegistryService.kt
+@@ -22,6 +22,8 @@ package org.ossreviewtoolkit.clients.bazelmoduleregistry
+ import okhttp3.MediaType.Companion.toMediaType
+ import okhttp3.OkHttpClient
+ 
++import org.apache.logging.log4j.kotlin.logger
++
+ import retrofit2.Retrofit
+ import retrofit2.converter.kotlinx.serialization.asConverterFactory
+ import retrofit2.http.GET
+@@ -46,9 +48,13 @@ interface RemoteBazelModuleRegistryService : BazelModuleRegistryService {
+             val bmrClient = client ?: OkHttpClient()
+ 
+             val contentType = "application/json".toMediaType()
++            val baseUrl = url ?: DEFAULT_URL
++
++            logger.info { "Creating remote Bazel module registry at '$baseUrl'." }
++
+             val retrofit = Retrofit.Builder()
+                 .client(bmrClient)
+-                .baseUrl(url ?: DEFAULT_URL)
++                .baseUrl(baseUrl)
+                 .addConverterFactory(JSON.asConverterFactory(contentType))
+                 .build()
+ 
+diff --git a/plugins/package-managers/bazel/build.gradle.kts b/plugins/package-managers/bazel/build.gradle.kts
+index 9ef314886aaf1..1165158e002ca 100644
+--- a/plugins/package-managers/bazel/build.gradle.kts
++++ b/plugins/package-managers/bazel/build.gradle.kts
+@@ -45,5 +45,7 @@ dependencies {
+     implementation(libs.kotlinx.serialization.core)
+     implementation(libs.kotlinx.serialization.json)
+ 
++    testImplementation(libs.mockk)
++
+     funTestImplementation(testFixtures(projects.analyzer))
+ }
+diff --git a/plugins/package-managers/bazel/src/main/kotlin/Bazel.kt b/plugins/package-managers/bazel/src/main/kotlin/Bazel.kt
+index 901c82dee3552..44adb2ab289de 100644
+--- a/plugins/package-managers/bazel/src/main/kotlin/Bazel.kt
++++ b/plugins/package-managers/bazel/src/main/kotlin/Bazel.kt
+@@ -143,29 +143,12 @@ class Bazel(
+     private fun determineRegistry(lockfile: Lockfile, projectDir: File): BazelModuleRegistryService {
+         // Bazel version < 7.2.0.
+         if (lockfile.flags != null) {
+-            val registryUrl = lockfile.registryUrl()
+-
+-            return registryUrl.withoutPrefix("file://")?.let {
+-                val localRegistryURL = it.replace("%workspace%", projectDir.absolutePath)
+-                logger.info {
+-                    "Using local Bazel module registry at '$localRegistryURL'."
+-                }
+-
+-                LocalBazelModuleRegistryService(File(localRegistryURL))
+-            } ?: RemoteBazelModuleRegistryService.create(registryUrl)
++            return MultiBazelModuleRegistryService.create(lockfile.registryUrls(), projectDir)
+         }
+ 
+         // Bazel version >= 7.2.0.
+         if (lockfile.registryFileHashes != null) {
+-            val registryFileHashes = lockfile.registryFileHashes.map { (url, _) ->
+-                if (url.startsWith("file://")) {
+-                    url.replace("%workspace%", projectDir.absolutePath)
+-                } else {
+-                    url
+-                }
+-            }.toSet()
+-
+-            return CompositeBazelModuleRegistryService.create(registryFileHashes)
++            return CompositeBazelModuleRegistryService.create(lockfile.registryFileHashes.keys, projectDir)
+         }
+ 
+         val msg = "Bazel registry URL cannot be determined from the lockfile."
+diff --git a/plugins/package-managers/bazel/src/main/kotlin/BazelModel.kt b/plugins/package-managers/bazel/src/main/kotlin/BazelModel.kt
+index 0b3ea2ef8ebca..da57616fe3028 100644
+--- a/plugins/package-managers/bazel/src/main/kotlin/BazelModel.kt
++++ b/plugins/package-managers/bazel/src/main/kotlin/BazelModel.kt
+@@ -43,8 +43,11 @@ internal data class Lockfile(
+         }
+     }
+ 
+-    // TODO Support multiple registries.
+-    fun registryUrl(): String? = flags?.cmdRegistries?.getOrElse(0) { null }
++    /**
++     * Return a collection with the URLs of the service registries defined for this project in case the model for
++     * Bazel < 7.2.0 is used.
++     */
++    fun registryUrls(): Collection<String> = flags?.cmdRegistries.orEmpty()
+ }
+ 
+ @Serializable
+diff --git a/plugins/package-managers/bazel/src/main/kotlin/CompositeBazelModuleRegistryService.kt b/plugins/package-managers/bazel/src/main/kotlin/CompositeBazelModuleRegistryService.kt
+index bafeae3991ece..b19fd51650446 100644
+--- a/plugins/package-managers/bazel/src/main/kotlin/CompositeBazelModuleRegistryService.kt
++++ b/plugins/package-managers/bazel/src/main/kotlin/CompositeBazelModuleRegistryService.kt
+@@ -43,9 +43,10 @@ internal class CompositeBazelModuleRegistryService(
+         internal val URL_REGEX = "^(?<server>.*/)modules/(?<package>[^/]+)/[^/]+/source\\.json$".toRegex()
+ 
+         /**
+-         * Create a Composite Bazel Module Registry client instance.
++         * Create a Composite Bazel Module Registry client instance. The wrapped [BazelModuleRegistryService]s are
++         * created based on the passed in [urls]; local registries use the given [projectDir] as workspace.
+          */
+-        fun create(urls: Set<String>): CompositeBazelModuleRegistryService {
++        fun create(urls: Set<String>, projectDir: File): CompositeBazelModuleRegistryService {
+             val packageNamesForServer = urls.filter { it.endsWith("source.json") }.mapNotNull { url ->
+                 val groups = URL_REGEX.matchEntire(url)?.groups
+ 
+@@ -63,19 +64,8 @@ internal class CompositeBazelModuleRegistryService(
+             }.groupByTo(mutableMapOf(), { it.first }) { it.second }.mapValues { it.value.toSet() }
+ 
+             val packageNamesForRegistry = packageNamesForServer.mapKeys { (url, _) ->
+-                if (url.startsWith("file://")) {
+-                    logger.info {
+-                        "Using local Bazel module registry at '$url'."
+-                    }
+-
+-                    LocalBazelModuleRegistryService(File(url))
+-                } else {
+-                    logger.info {
+-                        "Using remote Bazel module registry at '$url'."
+-                    }
+-
+-                    RemoteBazelModuleRegistryService.create(url)
+-                }
++                LocalBazelModuleRegistryService.createForLocalUrl(url, projectDir)
++                    ?: RemoteBazelModuleRegistryService.create(url)
+             }
+ 
+             return CompositeBazelModuleRegistryService(packageNamesForRegistry)
+diff --git a/plugins/package-managers/bazel/src/main/kotlin/MultiBazelModuleRegistryService.kt b/plugins/package-managers/bazel/src/main/kotlin/MultiBazelModuleRegistryService.kt
+new file mode 100644
+index 0000000000000..bc7c3d3317aa7
+--- /dev/null
++++ b/plugins/package-managers/bazel/src/main/kotlin/MultiBazelModuleRegistryService.kt
+@@ -0,0 +1,112 @@
++/*
++ * Copyright (C) 2024 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *     https://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ *
++ * SPDX-License-Identifier: Apache-2.0
++ * License-Filename: LICENSE
++ */
++
++package org.ossreviewtoolkit.plugins.packagemanagers.bazel
++
++import java.io.File
++
++import org.ossreviewtoolkit.clients.bazelmoduleregistry.BazelModuleRegistryService
++import org.ossreviewtoolkit.clients.bazelmoduleregistry.LocalBazelModuleRegistryService
++import org.ossreviewtoolkit.clients.bazelmoduleregistry.ModuleMetadata
++import org.ossreviewtoolkit.clients.bazelmoduleregistry.ModuleSourceInfo
++import org.ossreviewtoolkit.clients.bazelmoduleregistry.RemoteBazelModuleRegistryService
++
++/**
++ * A special implementation of [BazelModuleRegistryService] that wraps an arbitrary number of other
++ * [BazelModuleRegistryService] instances. It can be used for projects that declare multiple registries.
++ *
++ * The functions of the interface are implemented by iterating over the wrapped services and returning the first
++ * successful result.
++ */
++internal class MultiBazelModuleRegistryService(
++    /** The wrapped [BazelModuleRegistryService] instances. */
++    private val registryServices: Collection<BazelModuleRegistryService>
++) : BazelModuleRegistryService {
++    companion object {
++        /**
++         * Create an instance of [MultiBazelModuleRegistryService] for the given [registryUrls]. Based on the URLs,
++         * concrete [BazelModuleRegistryService] implementations are created. Local registry services use the given
++         * [projectDir] as workspace. These services are then queried in the order defined by the passed in collection.
++         * Note that as the last service a remote module registry for the Bazel Central Registry is added that serves
++         * as a fallback.
++         */
++        fun create(registryUrls: Collection<String>, projectDir: File): MultiBazelModuleRegistryService {
++            val registryServices = registryUrls.mapTo(mutableListOf()) { url ->
++                LocalBazelModuleRegistryService.createForLocalUrl(url, projectDir)
++                    ?: RemoteBazelModuleRegistryService.create(url)
++            }
++
++            // Add the default Bazel registry as a fallback.
++            registryServices += RemoteBazelModuleRegistryService.create(null)
++
++            return MultiBazelModuleRegistryService(registryServices)
++        }
++
++        /**
++         * Return an exception with a message that combines the messages of all [Throwable]s in this list.
++         */
++        private fun List<Throwable>.combinedException(caption: String): Throwable =
++            IllegalArgumentException(
++                "$caption:\n${joinToString("\n") { it.message.orEmpty() }}"
++            )
++    }
++
++    override suspend fun getModuleMetadata(name: String): ModuleMetadata =
++        queryRegistryServices(
++            errorMessage = { "Failed to query metadata for package '$name'" },
++            query = { it.getModuleMetadata(name) }
++        )
++
++    override suspend fun getModuleSourceInfo(name: String, version: String): ModuleSourceInfo =
++        queryRegistryServices(
++            errorMessage = { "Failed to query source info for package '$name' and version '$version'" },
++            query = { it.getModuleSourceInfo(name, version) }
++        )
++
++    /**
++     * A generic function for sending a [query] to all managed [BazelModuleRegistryService] instances and returning the
++     * first successful result. In case no registry service can provide a result, throw an exception with the given
++     * [errorMessage] and a summary of all failures.
++     */
++    private suspend fun <T> queryRegistryServices(
++        errorMessage: () -> String,
++        query: suspend (BazelModuleRegistryService) -> T
++    ): T {
++        val failures = mutableListOf<Throwable>()
++
++        tailrec suspend fun queryServices(itServices: Iterator<BazelModuleRegistryService>): T? =
++            if (!itServices.hasNext()) {
++                null
++            } else {
++                val triedResult = runCatching { query(itServices.next()) }
++                val result = triedResult.getOrNull()
++
++                // The Elvis operator does not work here because of the tailrec modifier.
++                if (result != null) {
++                    result
++                } else {
++                    triedResult.exceptionOrNull()?.let(failures::add)
++                    queryServices(itServices)
++                }
++            }
++
++        val info = queryServices(registryServices.iterator())
++        return info ?: throw failures.combinedException(errorMessage())
++    }
++}

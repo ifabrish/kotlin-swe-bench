@@ -1,0 +1,3 @@
+services:
+  main:
+    image: kotlin-bench/ankidroid_anki-android:pr-20250

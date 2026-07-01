@@ -1,0 +1,282 @@
+diff --git a/clients/fossid-webapp/src/test/kotlin/FossId2024dot2Test.kt b/clients/fossid-webapp/src/test/kotlin/FossId2024dot2Test.kt
+index 35631762aaf3c..0cb10a26ae45a 100644
+--- a/clients/fossid-webapp/src/test/kotlin/FossId2024dot2Test.kt
++++ b/clients/fossid-webapp/src/test/kotlin/FossId2024dot2Test.kt
+@@ -77,7 +77,7 @@ class FossId2024dot2Test : StringSpec({
+         service.getProject("", "", PROJECT_CODE_2024) shouldNotBeNull {
+             checkResponse("get project")
+ 
+-            data.shouldNotBeNull().isArchived shouldBe false
++            data?.value.shouldNotBeNull().isArchived shouldBe false
+         }
+     }
+ })
+diff --git a/clients/fossid-webapp/src/test/kotlin/FossIdClientNewProjectTest.kt b/clients/fossid-webapp/src/test/kotlin/FossIdClientNewProjectTest.kt
+index 8d6cbc5d3e591..0344e0b4c8f78 100644
+--- a/clients/fossid-webapp/src/test/kotlin/FossIdClientNewProjectTest.kt
++++ b/clients/fossid-webapp/src/test/kotlin/FossIdClientNewProjectTest.kt
+@@ -95,7 +95,7 @@ class FossIdClientNewProjectTest : StringSpec({
+             SCAN_CODE,
+             "https://github.com/gundy/semver4j.git",
+             "671aa533f7e33c773bf620b9f466650c3b9ab26e"
+-        ).shouldNotBeNull().data.shouldNotBeNull() shouldContain("scan_id" to "4920")
++        ).shouldNotBeNull().data?.value?.scanId shouldBe "4920"
+     }
+ 
+     "Download from Git can be triggered" {
+@@ -107,7 +107,7 @@ class FossIdClientNewProjectTest : StringSpec({
+     "Download status can be queried" {
+         service.checkDownloadStatus("", "", SCAN_CODE) shouldNotBeNull {
+             checkResponse("check download status")
+-            data shouldBe DownloadStatus.FINISHED
++            data?.value shouldBe DownloadStatus.FINISHED
+         }
+     }
+ 
+diff --git a/clients/fossid-webapp/src/test/kotlin/FossIdClientReturnTypeTest.kt b/clients/fossid-webapp/src/test/kotlin/FossIdClientReturnTypeTest.kt
+index 44c7e8e7b037a..a289602ff328d 100644
+--- a/clients/fossid-webapp/src/test/kotlin/FossIdClientReturnTypeTest.kt
++++ b/clients/fossid-webapp/src/test/kotlin/FossIdClientReturnTypeTest.kt
+@@ -24,6 +24,7 @@ import com.github.tomakehurst.wiremock.core.WireMockConfiguration
+ 
+ import io.kotest.core.spec.style.StringSpec
+ import io.kotest.matchers.collections.beEmpty
++import io.kotest.matchers.maps.shouldContainValue
+ import io.kotest.matchers.nulls.shouldNotBeNull
+ import io.kotest.matchers.should
+ import io.kotest.matchers.shouldBe
+@@ -74,7 +75,7 @@ class FossIdClientReturnTypeTest : StringSpec({
+     "Single scan can be queried" {
+         service.getScan("", "", SCAN_CODE_2) shouldNotBeNull {
+             checkResponse("get scan")
+-            data.shouldBeTypeOf<Scan>()
++            data?.value.shouldBeTypeOf<Scan>()
+         }
+     }
+ 
+@@ -88,7 +89,7 @@ class FossIdClientReturnTypeTest : StringSpec({
+     "Scans for project can be listed when there is exactly one" {
+         service.listScansForProject("", "", PROJECT_CODE_3) shouldNotBeNull {
+             checkResponse("list scans")
+-            data shouldNotBeNull {
++            data.shouldNotBeNull {
+                 size shouldBe 1
+                 first().shouldBeTypeOf<Scan>()
+             }
+@@ -167,7 +168,7 @@ class FossIdClientReturnTypeTest : StringSpec({
+             119
+         ) shouldNotBeNull {
+             checkResponse("list matched lines")
+-            data shouldNotBeNull {
++            data?.value shouldNotBeNull {
+                 localFile shouldNot beEmpty()
+                 mirrorFile shouldNot beEmpty()
+             }
+@@ -256,6 +257,28 @@ class FossIdClientReturnTypeTest : StringSpec({
+         }
+     }
+ 
++    "When create scan returns an error, no exception is thrown" {
++        service.createScan(
++            "",
++            "",
++            PROJECT_CODE_1,
++            SCAN_CODE_1,
++            "git_repo_url",
++            "develop"
++        ) shouldNotBeNull {
++            message shouldBe "These issues were found while parsing the request:"
++            data?.value?.message shouldBe "Field git_repo_url: there was an issue executing command: timeout 200 git " +
++                "ls-remote 'ssh git repo' 2>&1. Exit status: 128. Output: Repository not found The requested " +
++                "repository does not exist, or you do not have permission to access it. fatal: Could not read from " +
++                "remote repository.  Please make sure you have the correct access rights and the repository exists."
++            data?.value?.messageParameters?.shouldContainValue(
++                "Repository not found The requested repository does not exist, or you do not have permission " +
++                    "to access it. fatal: Could not read from remote repository.  Please make sure you have the " +
++                    "correct access rights and the repository exists."
++            )
++        }
++    }
++
+     "A file can be marked as identified" {
+         service.markAsIdentified(
+             "",
+@@ -320,4 +343,11 @@ class FossIdClientReturnTypeTest : StringSpec({
+             checkResponse("add file comment")
+         }
+     }
++
++    "An error response can be parsed" {
++        service.getProject("", "", "semver4j_2_20201203_090342") shouldNotBeNull {
++            error shouldBe "Classes.FossID.user_not_found_or_api_key_is_not_correct"
++            message shouldBe "User is not found or API key is incorrect"
++        }
++    }
+ })
+diff --git a/clients/fossid-webapp/src/test/resources/return-type/mappings/apiphp-create_scan.json b/clients/fossid-webapp/src/test/resources/return-type/mappings/apiphp-create_scan.json
+new file mode 100644
+index 0000000000000..cfcad5e5cd4c7
+--- /dev/null
++++ b/clients/fossid-webapp/src/test/resources/return-type/mappings/apiphp-create_scan.json
+@@ -0,0 +1,26 @@
++{
++  "id" : "ae6669fb-7ca6-496a-9268-7e4eebb64007",
++  "name" : "apiphp",
++  "request" : {
++    "url" : "/api.php",
++    "method" : "POST",
++    "bodyPatterns" : [ {
++      "equalToJson" : "{\"action\":\"create\",\"group\":\"scans\",\"data\":{\"username\":\"\",\"key\":\"\",\"scan_code\":\"semver4j_20201203_090342\",\"project_code\":\"semver4j\",\"git_repo_url\":\"git_repo_url\",\"git_branch\":\"develop\"}}",
++      "ignoreArrayOrder" : true,
++      "ignoreExtraElements" : true
++    } ]
++  },
++  "response" : {
++    "status" : 200,
++    "body" : "{\"operation\":\"scans_create\",  \"status\":\"0\",  \"data\":[{\"code\": \"RequestData.Base.issue_with_executing_command\",    \"message\":\"Field git_repo_url: there was an issue executing command: timeout 200 git ls-remote 'ssh git repo' 2>&1. Exit status: 128. Output: Repository not found The requested repository does not exist, or you do not have permission to access it. fatal: Could not read from remote repository.  Please make sure you have the correct access rights and the repository exists.\",    \"message_parameters\":{\"fieldname\":\"git_repo_url\",      \"cmd\":\"timeout 200 git ls-remote 'ssh git repo' 2>&1\",      \"exitStatus\":128,      \"out\":\"Repository not found The requested repository does not exist, or you do not have permission to access it. fatal: Could not read from remote repository.  Please make sure you have the correct access rights and the repository exists.\"}  }],  \"error\":\"RequestData.Base.issues_while_parsing_request\",  \"message\":\"These issues were found while parsing the request:\",  \"message_parameters\":[]}",
++    "headers" : {
++      "Content-Type" : "text/html; charset=UTF-8",
++      "Date" : "Thu, 03 Dec 2020 08:03:42 GMT",
++      "Server" : "Apache/2.4.38 (Debian)",
++      "Vary" : "Accept-Encoding"
++    }
++  },
++  "uuid" : "ae6669fb-7ca6-496a-9268-7e4eebb64007",
++  "persistent" : true,
++  "insertionIndex" : 5
++}
+diff --git a/clients/fossid-webapp/src/test/resources/return-type/mappings/apiphp-get_project_error.json b/clients/fossid-webapp/src/test/resources/return-type/mappings/apiphp-get_project_error.json
+new file mode 100644
+index 0000000000000..ccf9f62a7f30d
+--- /dev/null
++++ b/clients/fossid-webapp/src/test/resources/return-type/mappings/apiphp-get_project_error.json
+@@ -0,0 +1,26 @@
++{
++  "id" : "2ee103eb-e768-446c-8e50-316969023512",
++  "name" : "apiphp",
++  "request" : {
++    "url" : "/api.php",
++    "method" : "POST",
++    "bodyPatterns" : [ {
++      "equalToJson" : "{  \"action\" : \"get_information\",  \"group\" : \"projects\",  \"data\" : {    \"username\":\"\",    \"key\":\"\",    \"project_code\": \"semver4j_2_20201203_090342\"  }}  ",
++      "ignoreArrayOrder" : true,
++      "ignoreExtraElements" : true
++    } ]
++  },
++  "response" : {
++    "status" : 200,
++    "body" : "{  \"operation\": \"projects_get_information\",  \"status\": \"0\",  \"data\": [], \"error\": \"Classes.FossID.user_not_found_or_api_key_is_not_correct\", \"message\": \"User is not found or API key is incorrect\", \"message_parameters\": []}",
++    "headers" : {
++      "Content-Type" : "text/html; charset=UTF-8",
++      "Date" : "Wed, 16 Apr 2025 07:03:22 GMT",
++      "Server" : "Apache/2.4.38 (Debian)",
++      "Vary" : "Accept-Encoding"
++    }
++  },
++  "uuid" : "2ee103eb-e768-446c-8e50-316969023512",
++  "persistent" : true,
++  "insertionIndex" : 1
++}
+diff --git a/plugins/scanners/fossid/src/test/kotlin/FossIdSnippetChoiceTest.kt b/plugins/scanners/fossid/src/test/kotlin/FossIdSnippetChoiceTest.kt
+index e7348b2644b81..4a658f4ada2e8 100644
+--- a/plugins/scanners/fossid/src/test/kotlin/FossIdSnippetChoiceTest.kt
++++ b/plugins/scanners/fossid/src/test/kotlin/FossIdSnippetChoiceTest.kt
+@@ -36,6 +36,7 @@ import io.mockk.unmockkObject
+ import org.ossreviewtoolkit.clients.fossid.EntityResponseBody
+ import org.ossreviewtoolkit.clients.fossid.FossIdRestService
+ import org.ossreviewtoolkit.clients.fossid.FossIdServiceWithVersion
++import org.ossreviewtoolkit.clients.fossid.PolymorphicData
+ import org.ossreviewtoolkit.clients.fossid.PolymorphicList
+ import org.ossreviewtoolkit.clients.fossid.PolymorphicResponseBody
+ import org.ossreviewtoolkit.clients.fossid.addComponentIdentification
+@@ -971,7 +972,7 @@ fun FossIdServiceWithVersion.mockFiles(
+     if (matchedLines.isNotEmpty()) {
+         coEvery { listMatchedLines(USER, API_KEY, scanCode, any(), any()) } answers {
+             val lines = matchedLines[arg(5)]
+-            EntityResponseBody(status = 1, data = lines)
++            EntityResponseBody(status = 1, data = PolymorphicData(lines))
+         }
+     }
+ 
+diff --git a/plugins/scanners/fossid/src/test/kotlin/FossIdTest.kt b/plugins/scanners/fossid/src/test/kotlin/FossIdTest.kt
+index b0a7de70a02c9..c4052ca4564d8 100644
+--- a/plugins/scanners/fossid/src/test/kotlin/FossIdTest.kt
++++ b/plugins/scanners/fossid/src/test/kotlin/FossIdTest.kt
+@@ -45,6 +45,7 @@ import kotlinx.coroutines.runInterruptible
+ import org.ossreviewtoolkit.clients.fossid.EntityResponseBody
+ import org.ossreviewtoolkit.clients.fossid.FossIdRestService
+ import org.ossreviewtoolkit.clients.fossid.MapResponseBody
++import org.ossreviewtoolkit.clients.fossid.PolymorphicData
+ import org.ossreviewtoolkit.clients.fossid.checkDownloadStatus
+ import org.ossreviewtoolkit.clients.fossid.createIgnoreRule
+ import org.ossreviewtoolkit.clients.fossid.createProject
+@@ -193,7 +194,7 @@ class FossIdTest : WordSpec({
+             coEvery { service.downloadFromGit(USER, API_KEY, scanCode) } returns
+                 EntityResponseBody(status = 1)
+             coEvery { service.checkDownloadStatus(USER, API_KEY, scanCode) } returns
+-                EntityResponseBody(status = 1, data = DownloadStatus.FAILED)
++                EntityResponseBody(status = 1, data = PolymorphicData(DownloadStatus.FAILED))
+ 
+             val fossId = createFossId(config)
+             fossId.scan(createPackage(createIdentifier(index = 1), vcsInfo))
+diff --git a/plugins/scanners/fossid/src/test/kotlin/TestUtils.kt b/plugins/scanners/fossid/src/test/kotlin/TestUtils.kt
+index 18451d4644532..9a30db373f1dc 100644
+--- a/plugins/scanners/fossid/src/test/kotlin/TestUtils.kt
++++ b/plugins/scanners/fossid/src/test/kotlin/TestUtils.kt
+@@ -29,7 +29,8 @@ import java.util.concurrent.atomic.AtomicInteger
+ import org.ossreviewtoolkit.clients.fossid.EntityResponseBody
+ import org.ossreviewtoolkit.clients.fossid.FossIdRestService
+ import org.ossreviewtoolkit.clients.fossid.FossIdServiceWithVersion
+-import org.ossreviewtoolkit.clients.fossid.MapResponseBody
++import org.ossreviewtoolkit.clients.fossid.PolymorphicData
++import org.ossreviewtoolkit.clients.fossid.PolymorphicDataResponseBody
+ import org.ossreviewtoolkit.clients.fossid.PolymorphicInt
+ import org.ossreviewtoolkit.clients.fossid.PolymorphicList
+ import org.ossreviewtoolkit.clients.fossid.PolymorphicResponseBody
+@@ -47,6 +48,7 @@ import org.ossreviewtoolkit.clients.fossid.listMatchedLines
+ import org.ossreviewtoolkit.clients.fossid.listPendingFiles
+ import org.ossreviewtoolkit.clients.fossid.listScansForProject
+ import org.ossreviewtoolkit.clients.fossid.listSnippets
++import org.ossreviewtoolkit.clients.fossid.model.CreateScanResponse
+ import org.ossreviewtoolkit.clients.fossid.model.Scan
+ import org.ossreviewtoolkit.clients.fossid.model.identification.common.LicenseMatchType
+ import org.ossreviewtoolkit.clients.fossid.model.identification.identifiedFiles.IdentifiedFile
+@@ -466,7 +468,7 @@ internal fun FossIdServiceWithVersion.expectProjectRequest(
+     error: String? = null
+ ): FossIdServiceWithVersion {
+     coEvery { getProject(USER, API_KEY, projectCode) } returns
+-        EntityResponseBody(status = status, error = error, data = mockk())
++        EntityResponseBody(status = status, error = error, data = PolymorphicData(mockk()))
+     return this
+ }
+ 
+@@ -531,7 +533,7 @@ internal fun FossIdServiceWithVersion.expectDownload(scanCode: String): FossIdSe
+     coEvery { downloadFromGit(USER, API_KEY, scanCode) } returns
+         EntityResponseBody(status = 1)
+     coEvery { checkDownloadStatus(USER, API_KEY, scanCode) } returns
+-        EntityResponseBody(status = 1, data = DownloadStatus.FINISHED)
++        EntityResponseBody(status = 1, data = PolymorphicData(DownloadStatus.FINISHED))
+     return this
+ }
+ 
+@@ -547,7 +549,10 @@ internal fun FossIdServiceWithVersion.expectCreateScan(
+ ): FossIdServiceWithVersion {
+     coEvery {
+         createScan(USER, API_KEY, projectCode, scanCode, vcsInfo.url, vcsInfo.revision, comment)
+-    } returns MapResponseBody(status = 1, data = mapOf("scan_id" to SCAN_ID.toString()))
++    } returns PolymorphicDataResponseBody(
++        status = 1,
++        data = PolymorphicData(CreateScanResponse(SCAN_ID.toString()))
++    )
+     return this
+ }
+ 
+@@ -597,7 +602,7 @@ internal fun FossIdServiceWithVersion.mockFiles(
+         PolymorphicResponseBody(status = 1, data = PolymorphicList(snippets))
+     if (matchedLinesFlag) {
+         coEvery { listMatchedLines(USER, API_KEY, scanCode, any(), any()) } returns
+-            EntityResponseBody(status = 1, data = matchedLines)
++            EntityResponseBody(status = 1, data = PolymorphicData(matchedLines))
+     }
+ 
+     return this

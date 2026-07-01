@@ -1,0 +1,133 @@
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index 61cd1e3884..284372037c 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -51,6 +51,7 @@ If an `EditorConfigProperty` is defined in a `Rule` that is only provided via a
+ * Add experimental rule `function-expression-body`. This rule rewrites function bodies only contain a `return` or `throw` expression to an expression body. [#2150](https://github.com/pinterest/ktlint/issues/2150)
+ * Add new experimental rule `statement-wrapping` which ensures function, class, or other blocks statement body doesn't start or end at starting or ending braces of the block ([#1938](https://github.com/pinterest/ktlint/issues/1938)). This rule was added in `0.50` release, but was never executed outside the unit tests. The rule is now added to the `StandardRuleSetProvider` ([#2170](https://github.com/pinterest/ktlint/issues/2170))
+ * Add experimental rule `chain-method-continuation` to the `ktlint_official` code style, but it can be enabled explicitly for the other code styles as well. This rule requires the operators (`.` or `?.`) for chaining method calls, to be aligned with each other. This rule is enabled by ([#1953](https://github.com/pinterest/ktlint/issues/1953))
++* Add experimental rule `function-type-modifier-spacing`. This rule enforces a single whitespace between the modifier list and the function type. [#2202](https://github.com/pinterest/ktlint/issues/2202)
+ * Add EditorConfigPropertyRegistry to assist API Consumers that load rulesets at runtime to define the EditorConfigOverride ([#2190](https://github.com/pinterest/ktlint/issues/2190))
+
+ ### Removed
+diff --git a/documentation/snapshot/docs/rules/experimental.md b/documentation/snapshot/docs/rules/experimental.md
+index 1fe3793f9c..027360e259 100644
+--- a/documentation/snapshot/docs/rules/experimental.md
++++ b/documentation/snapshot/docs/rules/experimental.md
+@@ -850,6 +850,26 @@ Rule id: `no-single-line-block-comment` (`standard` rule set)
+
+ ## Spacing
+
++### Function type modifier spacing
++
++Enforce a single whitespace between the modifier list and the function type.
++
++=== "[:material-heart:](#) Ktlint"
++
++    ```kotlin
++    val foo: suspend () -> Unit = {}
++    suspend fun bar(baz: suspend () -> Unit) = baz()
++    ```
++
++=== "[:material-heart-off-outline:](#) Disallowed"
++
++    ```kotlin
++    val foo: suspend() -> Unit = {}
++    suspend fun bar(baz: suspend   () -> Unit) = baz()
++    ```
++
++Rule id: `function-type-modifier-spacing` (`standard` rule set)
++
+ ### No blank lines in list
+
+ Disallow blank lines to be used in lists before the first element, between elements, and after the last element.
+diff --git a/ktlint-ruleset-standard/api/ktlint-ruleset-standard.api b/ktlint-ruleset-standard/api/ktlint-ruleset-standard.api
+index f56a304cea..6fcc74658f 100644
+--- a/ktlint-ruleset-standard/api/ktlint-ruleset-standard.api
++++ b/ktlint-ruleset-standard/api/ktlint-ruleset-standard.api
+@@ -272,6 +272,15 @@ public final class com/pinterest/ktlint/ruleset/standard/rules/FunctionStartOfBo
+ 	public static final fun getFUNCTION_START_OF_BODY_SPACING_RULE_ID ()Lcom/pinterest/ktlint/rule/engine/core/api/RuleId;
+ }
+
++public final class com/pinterest/ktlint/ruleset/standard/rules/FunctionTypeModifierSpacingRule : com/pinterest/ktlint/ruleset/standard/StandardRule, com/pinterest/ktlint/rule/engine/core/api/Rule$Experimental {
++	public fun <init> ()V
++	public fun beforeVisitChildNodes (Lorg/jetbrains/kotlin/com/intellij/lang/ASTNode;ZLkotlin/jvm/functions/Function3;)V
++}
++
++public final class com/pinterest/ktlint/ruleset/standard/rules/FunctionTypeModifierSpacingRuleKt {
++	public static final fun getFUNCTION_TYPE_MODIFIER_SPACING_RULE ()Lcom/pinterest/ktlint/rule/engine/core/api/RuleId;
++}
++
+ public final class com/pinterest/ktlint/ruleset/standard/rules/FunctionTypeReferenceSpacingRule : com/pinterest/ktlint/ruleset/standard/StandardRule {
+ 	public fun <init> ()V
+ 	public fun beforeVisitChildNodes (Lorg/jetbrains/kotlin/com/intellij/lang/ASTNode;ZLkotlin/jvm/functions/Function3;)V
+diff --git a/ktlint-ruleset-standard/src/main/kotlin/com/pinterest/ktlint/ruleset/standard/StandardRuleSetProvider.kt b/ktlint-ruleset-standard/src/main/kotlin/com/pinterest/ktlint/ruleset/standard/StandardRuleSetProvider.kt
+index 52f346a8b9..30f8ef18de 100644
+--- a/ktlint-ruleset-standard/src/main/kotlin/com/pinterest/ktlint/ruleset/standard/StandardRuleSetProvider.kt
++++ b/ktlint-ruleset-standard/src/main/kotlin/com/pinterest/ktlint/ruleset/standard/StandardRuleSetProvider.kt
+@@ -28,6 +28,7 @@ import com.pinterest.ktlint.ruleset.standard.rules.FunctionNamingRule
+ import com.pinterest.ktlint.ruleset.standard.rules.FunctionReturnTypeSpacingRule
+ import com.pinterest.ktlint.ruleset.standard.rules.FunctionSignatureRule
+ import com.pinterest.ktlint.ruleset.standard.rules.FunctionStartOfBodySpacingRule
++import com.pinterest.ktlint.ruleset.standard.rules.FunctionTypeModifierSpacingRule
+ import com.pinterest.ktlint.ruleset.standard.rules.FunctionTypeReferenceSpacingRule
+ import com.pinterest.ktlint.ruleset.standard.rules.IfElseBracingRule
+ import com.pinterest.ktlint.ruleset.standard.rules.IfElseWrappingRule
+@@ -116,6 +117,7 @@ public class StandardRuleSetProvider : RuleSetProviderV3(RuleSetId.STANDARD) {
+             RuleProvider { FunctionReturnTypeSpacingRule() },
+             RuleProvider { FunctionSignatureRule() },
+             RuleProvider { FunctionStartOfBodySpacingRule() },
++            RuleProvider { FunctionTypeModifierSpacingRule() },
+             RuleProvider { FunctionTypeReferenceSpacingRule() },
+             RuleProvider { FunKeywordSpacingRule() },
+             RuleProvider { IfElseBracingRule() },
+diff --git a/ktlint-ruleset-standard/src/main/kotlin/com/pinterest/ktlint/ruleset/standard/rules/FunctionTypeModifierSpacingRule.kt b/ktlint-ruleset-standard/src/main/kotlin/com/pinterest/ktlint/ruleset/standard/rules/FunctionTypeModifierSpacingRule.kt
+new file mode 100644
+index 0000000000..7b0c8e57d5
+--- /dev/null
++++ b/ktlint-ruleset-standard/src/main/kotlin/com/pinterest/ktlint/ruleset/standard/rules/FunctionTypeModifierSpacingRule.kt
+@@ -0,0 +1,44 @@
++package com.pinterest.ktlint.ruleset.standard.rules
++
++import com.pinterest.ktlint.rule.engine.core.api.ElementType.FUNCTION_TYPE
++import com.pinterest.ktlint.rule.engine.core.api.ElementType.MODIFIER_LIST
++import com.pinterest.ktlint.rule.engine.core.api.ElementType.WHITE_SPACE
++import com.pinterest.ktlint.rule.engine.core.api.Rule
++import com.pinterest.ktlint.rule.engine.core.api.RuleId
++import com.pinterest.ktlint.rule.engine.core.api.nextCodeSibling
++import com.pinterest.ktlint.rule.engine.core.api.prevSibling
++import com.pinterest.ktlint.rule.engine.core.api.upsertWhitespaceBeforeMe
++import com.pinterest.ktlint.ruleset.standard.StandardRule
++import org.jetbrains.kotlin.com.intellij.lang.ASTNode
++
++/**
++ * Lints and formats a single space between the modifier list and the function type
++ */
++public class FunctionTypeModifierSpacingRule :
++    StandardRule("function-type-modifier-spacing"),
++    Rule.Experimental {
++    override fun beforeVisitChildNodes(
++        node: ASTNode,
++        autoCorrect: Boolean,
++        emit: (offset: Int, errorMessage: String, canBeAutoCorrected: Boolean) -> Unit,
++    ) {
++        node
++            .takeIf { it.elementType == MODIFIER_LIST }
++            ?.nextCodeSibling()
++            ?.takeIf { it.elementType == FUNCTION_TYPE }
++            ?.takeUnless { it.isPrecededBySingleSpace() }
++            ?.let { functionTypeNode ->
++                emit(functionTypeNode.startOffset, "Expected a single space between the modifier list and the function type", true)
++                if (autoCorrect) {
++                    functionTypeNode.upsertWhitespaceBeforeMe(" ")
++                }
++            }
++    }
++
++    private fun ASTNode.isPrecededBySingleSpace(): Boolean =
++        prevSibling()
++            ?.let { it.elementType == WHITE_SPACE && it.text == " " }
++            ?: false
++}
++
++public val FUNCTION_TYPE_MODIFIER_SPACING_RULE: RuleId = FunctionTypeModifierSpacingRule().ruleId

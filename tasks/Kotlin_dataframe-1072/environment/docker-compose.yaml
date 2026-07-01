@@ -1,0 +1,3 @@
+services:
+  main:
+    image: kotlin-bench/kotlin_dataframe:pr-1072

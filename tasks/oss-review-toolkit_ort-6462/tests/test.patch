@@ -1,0 +1,246 @@
+diff --git a/advisor/src/test/assets/ort-analyzer-result.yml b/advisor/src/test/assets/ort-analyzer-result.yml
+index 83ec52b0704c7..49c8942361a5a 100644
+--- a/advisor/src/test/assets/ort-analyzer-result.yml
++++ b/advisor/src/test/assets/ort-analyzer-result.yml
+@@ -571,4 +571,8 @@ analyzer:
+ scanner: null
+ advisor: null
+ evaluator: null
+-resolved_configuration: {}
++resolved_configuration:
++  package_curations:
++    providers:
++    - "DefaultDir"
++    data: {}
+diff --git a/cli/src/funTest/assets/gradle-all-dependencies-expected-result-with-curations.yml b/cli/src/funTest/assets/gradle-all-dependencies-expected-result-with-curations.yml
+index c926d74bebb5a..3e879cc7d209a 100644
+--- a/cli/src/funTest/assets/gradle-all-dependencies-expected-result-with-curations.yml
++++ b/cli/src/funTest/assets/gradle-all-dependencies-expected-result-with-curations.yml
+@@ -462,11 +462,15 @@ advisor: null
+ evaluator: null
+ resolved_configuration:
+   package_curations:
+-  - id: "Maven:org.hamcrest::"
+-    curations:
+-      comment: "Use the actual homepage instead of the GitHub page."
+-      homepage_url: "http://hamcrest.org/JavaHamcrest/"
+-  - id: "Maven:org.hamcrest:hamcrest-core:"
+-    curations:
+-      comment: "Fix description."
+-      description: "Curated description."
++    providers:
++    - "File"
++    data:
++      File:
++      - id: "Maven:org.hamcrest::"
++        curations:
++          comment: "Use the actual homepage instead of the GitHub page."
++          homepage_url: "http://hamcrest.org/JavaHamcrest/"
++      - id: "Maven:org.hamcrest:hamcrest-core:"
++        curations:
++          comment: "Fix description."
++          description: "Curated description."
+diff --git a/cli/src/funTest/assets/semver4j-ort-result.yml b/cli/src/funTest/assets/semver4j-ort-result.yml
+index 03cb00f38742a..0dc99fd410e3a 100644
+--- a/cli/src/funTest/assets/semver4j-ort-result.yml
++++ b/cli/src/funTest/assets/semver4j-ort-result.yml
+@@ -345,4 +345,8 @@ advisor:
+             severity: "5.5"
+     has_issues: false
+ evaluator: null
+-resolved_configuration: {}
++resolved_configuration:
++  package_curations:
++    providers:
++    - "DefaultDir"
++    data: {}
+diff --git a/model/src/test/assets/analyzer-result-with-dependency-graph.yml b/model/src/test/assets/analyzer-result-with-dependency-graph.yml
+index e916e8b40db67..8e40c59bbfeb3 100644
+--- a/model/src/test/assets/analyzer-result-with-dependency-graph.yml
++++ b/model/src/test/assets/analyzer-result-with-dependency-graph.yml
+@@ -177,15 +177,19 @@ advisor: null
+ evaluator: null
+ resolved_configuration:
+   package_curations:
+-  - id: "Maven:junit:junit:4.12"
+-    curations:
+-      comment: "ScanCode claims to find some NOASSERTION and Apache-2.0 in the FAQ\
+-        \ and the pom.xml, both are false-positives."
+-      concluded_license: "EPL-1.0"
+-      vcs:
+-        type: "Git"
+-        url: "https://github.com/junit-team/junit4.git"
+-        revision: "r4.12"
++    providers:
++    - "DefaultDir"
++    data:
++      DefaultDir:
++      - id: "Maven:junit:junit:4.12"
++        curations:
++          comment: "ScanCode claims to find some NOASSERTION and Apache-2.0 in the FAQ\
++            \ and the pom.xml, both are false-positives."
++          concluded_license: "EPL-1.0"
++          vcs:
++            type: "Git"
++            url: "https://github.com/junit-team/junit4.git"
++            revision: "r4.12"
+ labels:
+   applicationCategory: "BT05 Client application"
+   projectName: "Semver4jNewDependencyGraphShared"
+diff --git a/model/src/test/assets/gradle-all-dependencies-expected-result.yml b/model/src/test/assets/gradle-all-dependencies-expected-result.yml
+index d35abbcd985f8..25368f425a421 100644
+--- a/model/src/test/assets/gradle-all-dependencies-expected-result.yml
++++ b/model/src/test/assets/gradle-all-dependencies-expected-result.yml
+@@ -459,4 +459,8 @@ analyzer:
+ scanner: null
+ advisor: null
+ evaluator: null
+-resolved_configuration: {}
++resolved_configuration:
++  package_curations:
++    providers:
++    - "DefaultDir"
++    data: {}
+diff --git a/model/src/test/assets/result-with-issues-graph-old.yml b/model/src/test/assets/result-with-issues-graph-old.yml
+index ef3aaefbce45d..c1857791b4b39 100644
+--- a/model/src/test/assets/result-with-issues-graph-old.yml
++++ b/model/src/test/assets/result-with-issues-graph-old.yml
+@@ -1310,4 +1310,8 @@ analyzer:
+ scanner: null
+ advisor: null
+ evaluator: null
+-resolved_configuration: {}
++resolved_configuration:
++  package_curations:
++    providers:
++    - "DefaultDir"
++    data: {}
+diff --git a/model/src/test/assets/result-with-issues-graph.yml b/model/src/test/assets/result-with-issues-graph.yml
+index 92d48970c4afc..eba1b62d16dea 100644
+--- a/model/src/test/assets/result-with-issues-graph.yml
++++ b/model/src/test/assets/result-with-issues-graph.yml
+@@ -1339,4 +1339,8 @@ analyzer:
+ scanner: null
+ advisor: null
+ evaluator: null
+-resolved_configuration: {}
++resolved_configuration:
++  package_curations:
++    providers:
++    - "DefaultDir"
++    data: {}
+diff --git a/model/src/test/assets/result-with-issues-scopes.yml b/model/src/test/assets/result-with-issues-scopes.yml
+index 017d1bb947410..b9bf1e12e8e5c 100644
+--- a/model/src/test/assets/result-with-issues-scopes.yml
++++ b/model/src/test/assets/result-with-issues-scopes.yml
+@@ -1306,4 +1306,8 @@ analyzer:
+ scanner: null
+ advisor: null
+ evaluator: null
+-resolved_configuration: {}
++resolved_configuration:
++  package_curations:
++    providers:
++    - "DefaultDir"
++    data: {}
+diff --git a/model/src/test/assets/sbt-multi-project-example-graph-old.yml b/model/src/test/assets/sbt-multi-project-example-graph-old.yml
+index 0ce69b7f1f26f..73a1936234f0e 100644
+--- a/model/src/test/assets/sbt-multi-project-example-graph-old.yml
++++ b/model/src/test/assets/sbt-multi-project-example-graph-old.yml
+@@ -1300,4 +1300,8 @@ analyzer:
+ scanner: null
+ advisor: null
+ evaluator: null
+-resolved_configuration: {}
++resolved_configuration:
++  package_curations:
++    providers:
++    - "DefaultDir"
++    data: {}
+diff --git a/model/src/test/assets/sbt-multi-project-example-graph.yml b/model/src/test/assets/sbt-multi-project-example-graph.yml
+index 647a4a6b88fd6..262010236a70a 100644
+--- a/model/src/test/assets/sbt-multi-project-example-graph.yml
++++ b/model/src/test/assets/sbt-multi-project-example-graph.yml
+@@ -1329,4 +1329,8 @@ analyzer:
+ scanner: null
+ advisor: null
+ evaluator: null
+-resolved_configuration: {}
++resolved_configuration:
++  package_curations:
++    providers:
++    - "DefaultDir"
++    data: {}
+diff --git a/reporter/src/funTest/assets/gradle-all-dependencies-result.yml b/reporter/src/funTest/assets/gradle-all-dependencies-result.yml
+index e61ec84ed901a..6b131da2b85e0 100644
+--- a/reporter/src/funTest/assets/gradle-all-dependencies-result.yml
++++ b/reporter/src/funTest/assets/gradle-all-dependencies-result.yml
+@@ -536,4 +536,8 @@ analyzer:
+ scanner: null
+ advisor: null
+ evaluator: null
+-resolved_configuration: {}
++resolved_configuration:
++  package_curations:
++    providers:
++    - "DefaultDir"
++    data: {}
+diff --git a/reporter/src/funTest/assets/static-html-reporter-test-input.yml b/reporter/src/funTest/assets/static-html-reporter-test-input.yml
+index db6e0a1436776..4cc50b2201a4a 100644
+--- a/reporter/src/funTest/assets/static-html-reporter-test-input.yml
++++ b/reporter/src/funTest/assets/static-html-reporter-test-input.yml
+@@ -639,14 +639,18 @@ evaluator:
+       \ that overflow:scroll is working as expected.\n```"
+ resolved_configuration:
+   package_curations:
+-  - id: "Maven:com.foobar:foobar:1.0"
+-    curations:
+-      comment: "Foobar is an imaginary dependency and offers a license choice"
+-      concluded_license: "GPL-2.0-only OR MIT"
+-  - id: "Maven:com.h2database:h2:1.4.200"
+-    curations:
+-      comment: "H2 database offers a license choice"
+-      concluded_license: "MPL-2.0 OR EPL-1.0"
++    providers:
++    - "DefaultDir"
++    data:
++      DefaultDir:
++      - id: "Maven:com.foobar:foobar:1.0"
++        curations:
++          comment: "Foobar is an imaginary dependency and offers a license choice"
++          concluded_license: "GPL-2.0-only OR MIT"
++      - id: "Maven:com.h2database:h2:1.4.200"
++        curations:
++          comment: "H2 database offers a license choice"
++          concluded_license: "MPL-2.0 OR EPL-1.0"
+ labels:
+   job_parameters.JOB_PARAM_1: "label job param 1"
+   job_parameters.JOB_PARAM_2: "label job param 2"
+diff --git a/scanner/src/funTest/assets/analyzer-result.yml b/scanner/src/funTest/assets/analyzer-result.yml
+index c470e7b827480..f23057885ea7b 100644
+--- a/scanner/src/funTest/assets/analyzer-result.yml
++++ b/scanner/src/funTest/assets/analyzer-result.yml
+@@ -184,4 +184,8 @@ analyzer:
+ scanner: null
+ advisor: null
+ evaluator: null
+-resolved_configuration: {}
++resolved_configuration:
++  package_curations:
++    providers:
++    - "DefaultDir"
++    data: {}
+diff --git a/scanner/src/funTest/assets/dummy-expected-output-for-analyzer-result.yml b/scanner/src/funTest/assets/dummy-expected-output-for-analyzer-result.yml
+index f607210ef6c89..5923cef4b8144 100644
+--- a/scanner/src/funTest/assets/dummy-expected-output-for-analyzer-result.yml
++++ b/scanner/src/funTest/assets/dummy-expected-output-for-analyzer-result.yml
+@@ -369,4 +369,8 @@ scanner:
+   has_issues: true
+ advisor: null
+ evaluator: null
+-resolved_configuration: {}
++resolved_configuration:
++  package_curations:
++    providers:
++    - "DefaultDir"
++    data: {}

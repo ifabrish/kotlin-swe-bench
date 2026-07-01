@@ -1,0 +1,282 @@
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index 8c7a6ee1ab..1fa6f9b2f9 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -26,6 +26,7 @@ At this point in time, it is not yet decided what the next steps will be. Ktlint
+
+ ### Added
+
++* Add new experimental rule `binary-expression-wrapping`. This rule wraps a binary expression in case the max line length is exceeded ([#1940](https://github.com/pinterest/ktlint/issues/1940))
+ * Add flag to disable extension point `org.jetbrains.kotlin.com.intellij.treeCopyHandler` to analyse impact on custom rules [#1981](https://github.com/pinterest/ktlint/issues/1981)
+ * Add new experimental rule `no-empty-file` for all code styles. A kotlin (script) file may not be empty ([#1074](https://github.com/pinterest/ktlint/issues/1074))
+ * Add new experimental rule `statement-wrapping` which ensures function, class, or other blocks statement body doesn't start or end at starting or ending braces of the block ([#1938](https://github.com/pinterest/ktlint/issues/1938))
+diff --git a/documentation/snapshot/docs/rules/experimental.md b/documentation/snapshot/docs/rules/experimental.md
+index 1f6edb220f..049973b684 100644
+--- a/documentation/snapshot/docs/rules/experimental.md
++++ b/documentation/snapshot/docs/rules/experimental.md
+@@ -8,6 +8,38 @@ ktlint_experimental=enabled
+ ```
+ Also see [enable/disable specific rules](../configuration-ktlint/#disabled-rules).
+
++## Binary expression wrapping
++
++Wraps binary expression at the operator reference whenever the binary expression does not fit on the line. In case the binary expression is nested, the expression is evaluated from outside to inside. If the left and right hand sides of the binary expression, after wrapping, fit on a single line then the inner binary expressions will not be wrapped. If one or both inner binary expression still do not fit on a single after wrapping of the outer binary expression, then each of those inner binary expressions will be wrapped.
++
++=== "[:material-heart:](#) Ktlint"
++
++    ```kotlin
++    fun foo() {
++        // Assume that the last allowed character is
++        // at the X character on the right                       X
++        if ((leftHandSideExpression && rightHandSideExpression) ||
++            (leftHandSideLongExpression &&
++                rightHandSideLongExpression)) {
++            // do something
++        }
++    }
++    ```
++
++=== "[:material-heart-off-outline:](#) Disallowed"
++
++    ```kotlin
++    fun foo() {
++        // Assume that the last allowed character is
++        // at the X character on the right                       X
++        if ((leftHandSideExpression && rightHandSideExpression) || (leftHandSideLongExpression && rightHandSideLongExpression)) {
++            // do something
++        }
++    }
++    ```
++
++Rule id: `binary-expression-wrapping` (`standard` rule set)
++
+ ## Discouraged comment location
+
+ Detect discouraged comment locations (no autocorrect).
+diff --git a/ktlint-rule-engine/src/main/kotlin/com/pinterest/ktlint/rule/engine/api/KtLintRuleEngine.kt b/ktlint-rule-engine/src/main/kotlin/com/pinterest/ktlint/rule/engine/api/KtLintRuleEngine.kt
+index abe4b8896c..eec63c77b8 100644
+--- a/ktlint-rule-engine/src/main/kotlin/com/pinterest/ktlint/rule/engine/api/KtLintRuleEngine.kt
++++ b/ktlint-rule-engine/src/main/kotlin/com/pinterest/ktlint/rule/engine/api/KtLintRuleEngine.kt
+@@ -25,6 +25,7 @@ import org.ec4j.core.Resource
+ import org.ec4j.core.model.PropertyType.EndOfLineValue.crlf
+ import org.ec4j.core.model.PropertyType.EndOfLineValue.lf
+ import org.jetbrains.kotlin.com.intellij.lang.FileASTNode
++import org.jetbrains.kotlin.utils.addToStdlib.ifFalse
+ import java.nio.charset.StandardCharsets
+ import java.nio.file.FileSystem
+ import java.nio.file.FileSystems
+@@ -160,6 +161,13 @@ public class KtLintRuleEngine(
+                             canBeAutoCorrected,
+                         ),
+                     )
++                    // In trace mode report the violation immediately. The order in which violations are actually found might be different
++                    // from the order in which they are reported. For debugging purposes it cn be helpful to know the exact order in which
++                    // violations are being solved.
++                    LOGGER.trace {
++                        "Format violation: ${code.fileNameOrStdin()}:$line:$col: $errorMessage (${rule.ruleId})" +
++                            canBeAutoCorrected.ifFalse { " [cannot be autocorrected]" }
++                    }
+                 }
+             }
+         if (tripped) {
+diff --git a/ktlint-ruleset-standard/src/main/kotlin/com/pinterest/ktlint/ruleset/standard/StandardRuleSetProvider.kt b/ktlint-ruleset-standard/src/main/kotlin/com/pinterest/ktlint/ruleset/standard/StandardRuleSetProvider.kt
+index 68f5df6817..fcc80310e9 100644
+--- a/ktlint-ruleset-standard/src/main/kotlin/com/pinterest/ktlint/ruleset/standard/StandardRuleSetProvider.kt
++++ b/ktlint-ruleset-standard/src/main/kotlin/com/pinterest/ktlint/ruleset/standard/StandardRuleSetProvider.kt
+@@ -6,6 +6,7 @@ import com.pinterest.ktlint.rule.engine.core.api.RuleSetId
+ import com.pinterest.ktlint.ruleset.standard.rules.AnnotationRule
+ import com.pinterest.ktlint.ruleset.standard.rules.AnnotationSpacingRule
+ import com.pinterest.ktlint.ruleset.standard.rules.ArgumentListWrappingRule
++import com.pinterest.ktlint.ruleset.standard.rules.BinaryExpressionWrappingRule
+ import com.pinterest.ktlint.ruleset.standard.rules.BlockCommentInitialStarAlignmentRule
+ import com.pinterest.ktlint.ruleset.standard.rules.ChainWrappingRule
+ import com.pinterest.ktlint.ruleset.standard.rules.ClassNamingRule
+@@ -89,6 +90,7 @@ public class StandardRuleSetProvider :
+             RuleProvider { AnnotationRule() },
+             RuleProvider { AnnotationSpacingRule() },
+             RuleProvider { ArgumentListWrappingRule() },
++            RuleProvider { BinaryExpressionWrappingRule() },
+             RuleProvider { BlockCommentInitialStarAlignmentRule() },
+             RuleProvider { ChainWrappingRule() },
+             RuleProvider { ClassNamingRule() },
+diff --git a/ktlint-ruleset-standard/src/main/kotlin/com/pinterest/ktlint/ruleset/standard/rules/ArgumentListWrappingRule.kt b/ktlint-ruleset-standard/src/main/kotlin/com/pinterest/ktlint/ruleset/standard/rules/ArgumentListWrappingRule.kt
+index 144011326a..743d4fc660 100644
+--- a/ktlint-ruleset-standard/src/main/kotlin/com/pinterest/ktlint/ruleset/standard/rules/ArgumentListWrappingRule.kt
++++ b/ktlint-ruleset-standard/src/main/kotlin/com/pinterest/ktlint/ruleset/standard/rules/ArgumentListWrappingRule.kt
+@@ -42,12 +42,15 @@ public class ArgumentListWrappingRule :
+         id = "argument-list-wrapping",
+         visitorModifiers =
+             setOf(
++                // ArgumentListWrapping should only be used in case the max_line_length is still violated after running rules below:
+                 VisitorModifier.RunAfterRule(
+-                    // ArgumentListWrapping should only be used in case after normal wrapping the max_line_length is still
+-                    // violated
+                     ruleId = WRAPPING_RULE_ID,
+                     mode = REGARDLESS_WHETHER_RUN_AFTER_RULE_IS_LOADED_OR_DISABLED,
+                 ),
++                VisitorModifier.RunAfterRule(
++                    ruleId = BINARY_EXPRESSION_WRAPPING_RULE_ID,
++                    mode = REGARDLESS_WHETHER_RUN_AFTER_RULE_IS_LOADED_OR_DISABLED,
++                ),
+             ),
+         usesEditorConfigProperties =
+             setOf(
+diff --git a/ktlint-ruleset-standard/src/main/kotlin/com/pinterest/ktlint/ruleset/standard/rules/BinaryExpressionWrappingRule.kt b/ktlint-ruleset-standard/src/main/kotlin/com/pinterest/ktlint/ruleset/standard/rules/BinaryExpressionWrappingRule.kt
+new file mode 100644
+index 0000000000..d1b1db4a11
+--- /dev/null
++++ b/ktlint-ruleset-standard/src/main/kotlin/com/pinterest/ktlint/ruleset/standard/rules/BinaryExpressionWrappingRule.kt
+@@ -0,0 +1,153 @@
++package com.pinterest.ktlint.ruleset.standard.rules
++
++import com.pinterest.ktlint.rule.engine.core.api.ElementType.BINARY_EXPRESSION
++import com.pinterest.ktlint.rule.engine.core.api.ElementType.EQ
++import com.pinterest.ktlint.rule.engine.core.api.ElementType.FUN
++import com.pinterest.ktlint.rule.engine.core.api.ElementType.OPERATION_REFERENCE
++import com.pinterest.ktlint.rule.engine.core.api.ElementType.PROPERTY
++import com.pinterest.ktlint.rule.engine.core.api.IndentConfig
++import com.pinterest.ktlint.rule.engine.core.api.Rule
++import com.pinterest.ktlint.rule.engine.core.api.RuleId
++import com.pinterest.ktlint.rule.engine.core.api.editorconfig.EditorConfig
++import com.pinterest.ktlint.rule.engine.core.api.editorconfig.INDENT_SIZE_PROPERTY
++import com.pinterest.ktlint.rule.engine.core.api.editorconfig.INDENT_STYLE_PROPERTY
++import com.pinterest.ktlint.rule.engine.core.api.editorconfig.MAX_LINE_LENGTH_PROPERTY
++import com.pinterest.ktlint.rule.engine.core.api.firstChildLeafOrSelf
++import com.pinterest.ktlint.rule.engine.core.api.indent
++import com.pinterest.ktlint.rule.engine.core.api.isWhiteSpaceWithNewline
++import com.pinterest.ktlint.rule.engine.core.api.lastChildLeafOrSelf
++import com.pinterest.ktlint.rule.engine.core.api.leavesIncludingSelf
++import com.pinterest.ktlint.rule.engine.core.api.nextLeaf
++import com.pinterest.ktlint.rule.engine.core.api.nextSibling
++import com.pinterest.ktlint.rule.engine.core.api.noNewLineInClosedRange
++import com.pinterest.ktlint.rule.engine.core.api.prevCodeSibling
++import com.pinterest.ktlint.rule.engine.core.api.prevLeaf
++import com.pinterest.ktlint.rule.engine.core.api.prevSibling
++import com.pinterest.ktlint.rule.engine.core.api.upsertWhitespaceBeforeMe
++import com.pinterest.ktlint.ruleset.standard.StandardRule
++import org.jetbrains.kotlin.com.intellij.lang.ASTNode
++import org.jetbrains.kotlin.com.intellij.psi.tree.IElementType
++
++/**
++ * Wraps a binary expression whenever the expression does not fit on the line. Wrapping a binary expression should take precedence before
++ * argument of function calls inside that binary expression are wrapped.
++ */
++public class BinaryExpressionWrappingRule :
++    StandardRule(
++        id = "binary-expression-wrapping",
++        usesEditorConfigProperties =
++            setOf(
++                INDENT_SIZE_PROPERTY,
++                INDENT_STYLE_PROPERTY,
++                MAX_LINE_LENGTH_PROPERTY,
++            ),
++    ),
++    Rule.Experimental {
++    private var indentConfig = IndentConfig.DEFAULT_INDENT_CONFIG
++    private var maxLineLength = MAX_LINE_LENGTH_PROPERTY.defaultValue
++
++    override fun beforeFirstNode(editorConfig: EditorConfig) {
++        indentConfig =
++            IndentConfig(
++                indentStyle = editorConfig[INDENT_STYLE_PROPERTY],
++                tabWidth = editorConfig[INDENT_SIZE_PROPERTY],
++            )
++        maxLineLength = editorConfig[MAX_LINE_LENGTH_PROPERTY]
++    }
++
++    override fun beforeVisitChildNodes(
++        node: ASTNode,
++        autoCorrect: Boolean,
++        emit: (offset: Int, errorMessage: String, canBeAutoCorrected: Boolean) -> Unit,
++    ) {
++        when (node.elementType) {
++            BINARY_EXPRESSION -> visitExpression(node, emit, autoCorrect)
++        }
++    }
++
++    private fun visitExpression(
++        node: ASTNode,
++        emit: (offset: Int, errorMessage: String, canBeAutoCorrected: Boolean) -> Unit,
++        autoCorrect: Boolean,
++    ) {
++        require(node.elementType == BINARY_EXPRESSION)
++
++        // First check whether the entire expression has to be pushed to the next line after and assignment in a property or function
++        node
++            .takeIf { it.treeParent.elementType.anyOf(PROPERTY, FUN) }
++            ?.takeIf { binaryExpression ->
++                binaryExpression
++                    .prevSibling { it.elementType == EQ }
++                    ?.let { noNewLineInClosedRange(it, binaryExpression.firstChildLeafOrSelf()) }
++                    ?: false
++            }?.takeIf { textLengthWithoutNewlinePrefix(it.getFirstLeafOnLineOrSelf(), it.getLastLeafOnLineOrNull()) > maxLineLength }
++            ?.let { expression ->
++                emit(
++                    expression.startOffset,
++                    "Line is exceeding max line length. Break line between assignment and expression",
++                    true,
++                )
++                if (autoCorrect) {
++                    expression.upsertWhitespaceBeforeMe(expression.indent().plus(indentConfig.indent))
++                }
++            }
++
++        node
++            .findChildByType(OPERATION_REFERENCE)
++            ?.let { operationReference -> visitOperationReference(operationReference, emit, autoCorrect) }
++    }
++
++    private fun visitOperationReference(
++        node: ASTNode,
++        emit: (offset: Int, errorMessage: String, canBeAutoCorrected: Boolean) -> Unit,
++        autoCorrect: Boolean,
++    ) {
++        node
++            .takeIf { it.elementType == OPERATION_REFERENCE }
++            ?.takeIf { it.treeParent.elementType == BINARY_EXPRESSION }
++            ?.takeIf { textLengthWithoutNewlinePrefix(it.getFirstLeafOnLineOrSelf(), it.getLastLeafOnLineOrNull()) > maxLineLength }
++            ?.let { operationReference ->
++                if (cannotBeWrappedAtOperationReference(operationReference)) {
++                    // Wrapping after operation reference won't work as the left hand side still does not fit on a single line
++                    emit(operationReference.startOffset, "Line is exceeding max line length", false)
++                } else {
++                    operationReference
++                        .nextSibling()
++                        ?.let { nextSibling ->
++                            emit(
++                                nextSibling.startOffset,
++                                "Line is exceeding max line length. Break line after operator of binary expression",
++                                true,
++                            )
++                            if (autoCorrect) {
++                                nextSibling.upsertWhitespaceBeforeMe(operationReference.indent().plus(indentConfig.indent))
++                            }
++                        }
++                }
++            }
++    }
++
++    private fun cannotBeWrappedAtOperationReference(operationReference: ASTNode) =
++        operationReference
++            .takeUnless { it.prevCodeSibling()?.elementType == BINARY_EXPRESSION }
++            ?.let { textLengthWithoutNewlinePrefix(it.getFirstLeafOnLineOrSelf(), it.lastChildLeafOrSelf()) > maxLineLength }
++            ?: false
++
++    private fun textLengthWithoutNewlinePrefix(
++        fromNode: ASTNode,
++        toNode: ASTNode?,
++    ) = fromNode
++        .leavesIncludingSelf()
++        .takeWhile { it.prevLeaf() != toNode }
++        .joinToString(separator = "") { it.text }
++        .removePrefix("\n")
++        .length
++
++    private fun ASTNode.getLastLeafOnLineOrNull() = nextLeaf { it.isWhiteSpaceWithNewline() }?.prevLeaf()
++
++    private fun ASTNode.getFirstLeafOnLineOrSelf() = prevLeaf { it.isWhiteSpaceWithNewline() || it.prevLeaf() == null }!!
++}
++
++private fun IElementType.anyOf(vararg elementType: IElementType): Boolean = elementType.contains(this)
++
++public val BINARY_EXPRESSION_WRAPPING_RULE_ID: RuleId = BinaryExpressionWrappingRule().ruleId

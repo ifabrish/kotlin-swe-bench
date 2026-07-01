@@ -1,0 +1,3 @@
+services:
+  main:
+    image: kotlin-bench/oss-review-toolkit_ort:pr-8955

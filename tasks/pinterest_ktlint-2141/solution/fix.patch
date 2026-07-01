@@ -1,0 +1,107 @@
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index 2770232846..6c8f94e2e5 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -21,6 +21,7 @@ This project adheres to [Semantic Versioning](https://semver.org/).
+ * Fix spacing around colon in annotations `spacing-around-colon` ([#2093](https://github.com/pinterest/ktlint/issues/2093))
+ * Do not wrap a binary expression after an elvis operator in case the max line length is exceeded ([#2128](https://github.com/pinterest/ktlint/issues/2128))
+ * Fix indent of IS_EXPRESSION, PREFIX_EXPRESSION and POSTFIX_EXPRESSION in case it contains a linebreak `indent` [#2094](https://github.com/pinterest/ktlint/issues/2094)
++* Fix false positive regarding property that potentially can contain data which is mutable. `property-naming` [#2140](https://github.com/pinterest/ktlint/issues/2140)
+ * Add new experimental rule `function-literal`. This rule enforces the parameter list of a function literal to be formatted consistently. `function-literal` [#2121](https://github.com/pinterest/ktlint/issues/2121)
+ * Fix null pointer exception for if-else statement with empty THEN block `if-else-bracing` [#2135](https://github.com/pinterest/ktlint/issues/2135)
+
+diff --git a/documentation/snapshot/docs/rules/experimental.md b/documentation/snapshot/docs/rules/experimental.md
+index 5e57426856..0c64d7cc75 100644
+--- a/documentation/snapshot/docs/rules/experimental.md
++++ b/documentation/snapshot/docs/rules/experimental.md
+@@ -637,20 +637,26 @@ Rule id: `package-naming` (`standard` rule set)
+
+ Enforce naming of property.
+
++!!! note
++    This rule can not reliably detect all situations in which incorrect property naming is used. So it only detects in which it is certain that naming is incorrect.
++
+ === "[:material-heart:](#) Ktlint"
+
+     ```kotlin
+-    val FOO_1 = Foo()
+-    val FOO_BAR_1 = "FOO-BAR"
++    val foo1 = Foo() // In case developer want to communicate that Foo is mutable
++    val FOO1 = Foo() // In case developer want to communicate that Foo is deeply immutable
+
+-    var foo1: Foo = Foo()
++    const val FOO_BAR = "FOO-BAR" // By definition deeply immutable
++
++    var foo2: Foo = Foo() // By definition not immutable
+
+     class Bar {
+-        const val FOO_2 = "foo"
+-        const val FOO_BAR_2 = "FOO-BAR"
++        val foo1 = Foo() // In case developer want to communicate that Foo is mutable
++        val FOO1 = Foo() // In case developer want to communicate that Foo is deeply immutable
++
++        const val FOO_BAR = "FOO-BAR" // By definition deeply immutable
+
+-        val foo2 = "foo"
+-        val fooBar2 = "foo-bar"
++        var foo2: Foo = Foo() // By definition not immutable
+
+         // Backing property
+         private val _elementList = mutableListOf<Element>()
+@@ -661,17 +667,12 @@ Enforce naming of property.
+ === "[:material-heart-off-outline:](#) Disallowed"
+
+     ```kotlin
+-    val Foo1 = Foo()
+-    val FooBar1 = "FOO-BAR"
++    const val fooBar = "FOO-BAR" // By definition deeply immutable
+
+-    var FOO_1: Foo = Foo()
++    var FOO2: Foo = Foo() // By definition not immutable
+
+     class Bar {
+-        const val foo2 = "foo"
+-        const val fooBar2 = "FOO-BAR"
+-
+-        val FOO2 = "foo"
+-        val FOO_BAR_2 = "foo-bar"
++        val FOO_BAR = "FOO-BAR" // Class properties always start with lowercase, const is not allowed
+
+         // Incomplete backing property as public property 'elementList1' is missing
+         private val _elementList1 = mutableListOf<Element>()
+@@ -683,9 +684,6 @@ Enforce naming of property.
+     }
+     ```
+
+-!!! note
+-    Top level `val` properties and `const val` properties have to be written in screaming snake notation. Local `val` and `const val` are written in lower camel case.
+-
+ This rule can also be suppressed with the IntelliJ IDEA inspection suppression `PropertyName`.
+
+ Rule id: `property-naming` (`standard` rule set)
+diff --git a/ktlint-ruleset-standard/src/main/kotlin/com/pinterest/ktlint/ruleset/standard/rules/PropertyNamingRule.kt b/ktlint-ruleset-standard/src/main/kotlin/com/pinterest/ktlint/ruleset/standard/rules/PropertyNamingRule.kt
+index 79f1e477a7..0e5d2f7120 100644
+--- a/ktlint-ruleset-standard/src/main/kotlin/com/pinterest/ktlint/ruleset/standard/rules/PropertyNamingRule.kt
++++ b/ktlint-ruleset-standard/src/main/kotlin/com/pinterest/ktlint/ruleset/standard/rules/PropertyNamingRule.kt
+@@ -45,17 +45,15 @@ public class PropertyNamingRule :
+             .findChildByType(IDENTIFIER)
+             ?.let { identifier ->
+                 when {
+-                    property.hasCustomGetter() -> {
++                    property.hasConstModifier() -> {
++                        visitConstProperty(identifier, emit)
++                    }
++                    property.hasCustomGetter() || property.isTopLevelValue() || property.isObjectValue() -> {
+                         // Can not reliably determine whether the value is immutable or not
+                     }
+                     property.isBackingProperty() -> {
+                         visitBackingProperty(identifier, emit)
+                     }
+-                    property.hasConstModifier() ||
+-                        property.isTopLevelValue() ||
+-                        property.isObjectValue() -> {
+-                        visitConstProperty(identifier, emit)
+-                    }
+                     else -> {
+                         visitNonConstProperty(identifier, emit)
+                     }

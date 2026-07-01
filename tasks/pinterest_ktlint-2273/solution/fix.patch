@@ -1,0 +1,44 @@
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index 23fd898cf5..f50741a9db 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -14,6 +14,7 @@ This project adheres to [Semantic Versioning](https://semver.org/).
+ * Fix indent of multiline object declaration inside class `indent` [#2257](https://github.com/pinterest/ktlint/issue/2257)
+ * Ignore anonymous function in rule `function-naming` [#2260](https://github.com/pinterest/ktlint/issue/2260)
+ * Do not force blank line before function in right hand side of assignment `blank-line-before-declaration` [#2260](https://github.com/pinterest/ktlint/issue/2260)
++* Do not replace function body having a return statement only in case the return statement contains an intermediate exit point 'function-expression-body' [#2269](https://github.com/pinterest/ktlint/issue/2269)
+
+ ### Changed
+
+diff --git a/ktlint-ruleset-standard/src/main/kotlin/com/pinterest/ktlint/ruleset/standard/rules/FunctionExpressionBodyRule.kt b/ktlint-ruleset-standard/src/main/kotlin/com/pinterest/ktlint/ruleset/standard/rules/FunctionExpressionBodyRule.kt
+index d9a7ef01b9..8514b8a2e1 100644
+--- a/ktlint-ruleset-standard/src/main/kotlin/com/pinterest/ktlint/ruleset/standard/rules/FunctionExpressionBodyRule.kt
++++ b/ktlint-ruleset-standard/src/main/kotlin/com/pinterest/ktlint/ruleset/standard/rules/FunctionExpressionBodyRule.kt
+@@ -21,7 +21,9 @@ import com.pinterest.ktlint.rule.engine.core.api.editorconfig.EditorConfig
+ import com.pinterest.ktlint.rule.engine.core.api.editorconfig.INDENT_SIZE_PROPERTY
+ import com.pinterest.ktlint.rule.engine.core.api.editorconfig.INDENT_STYLE_PROPERTY
+ import com.pinterest.ktlint.rule.engine.core.api.editorconfig.MAX_LINE_LENGTH_PROPERTY
++import com.pinterest.ktlint.rule.engine.core.api.firstChildLeafOrSelf
+ import com.pinterest.ktlint.rule.engine.core.api.isWhiteSpace
++import com.pinterest.ktlint.rule.engine.core.api.leavesIncludingSelf
+ import com.pinterest.ktlint.rule.engine.core.api.nextSibling
+ import com.pinterest.ktlint.rule.engine.core.api.prevSibling
+ import com.pinterest.ktlint.ruleset.standard.StandardRule
+@@ -109,6 +111,7 @@ public class FunctionExpressionBodyRule :
+         require(block.elementType == BLOCK)
+         block
+             .takeIf { it.containingOnly(RETURN) }
++            ?.takeUnless { it.containsMultipleReturns() }
+             ?.findChildByType(RETURN)
+             ?.findChildByType(RETURN_KEYWORD)
+             ?.nextSibling { !it.isWhiteSpace() }
+@@ -161,6 +164,9 @@ public class FunctionExpressionBodyRule :
+                 .singleOrNull()
+                 ?.elementType
+
++    private fun ASTNode.containsMultipleReturns() =
++        firstChildLeafOrSelf().leavesIncludingSelf().count { it.elementType == RETURN_KEYWORD } > 1
++
+     private fun ASTNode.createUnitTypeReference() =
+         PsiFileFactory
+             .getInstance(psi.project)

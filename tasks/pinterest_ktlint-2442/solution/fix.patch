@@ -1,0 +1,25 @@
+diff --git a/documentation/snapshot/docs/rules/standard.md b/documentation/snapshot/docs/rules/standard.md
+index 4aea5c64b6..6049bf39ff 100644
+--- a/documentation/snapshot/docs/rules/standard.md
++++ b/documentation/snapshot/docs/rules/standard.md
+@@ -499,7 +499,7 @@ Enforce naming of property.
+     }
+     ```
+
+-This rule can also be suppressed with the IntelliJ IDEA inspection suppression `PropertyName`.
++This rule can also be suppressed with the IntelliJ IDEA inspection suppression `PropertyName` or `ConstPropertyName`.
+
+ Rule id: `property-naming` (`standard` rule set)
+
+diff --git a/ktlint-rule-engine/src/main/kotlin/com/pinterest/ktlint/rule/engine/internal/SuppressionLocatorBuilder.kt b/ktlint-rule-engine/src/main/kotlin/com/pinterest/ktlint/rule/engine/internal/SuppressionLocatorBuilder.kt
+index 6f9948303a..715bcae262 100644
+--- a/ktlint-rule-engine/src/main/kotlin/com/pinterest/ktlint/rule/engine/internal/SuppressionLocatorBuilder.kt
++++ b/ktlint-rule-engine/src/main/kotlin/com/pinterest/ktlint/rule/engine/internal/SuppressionLocatorBuilder.kt
+@@ -42,6 +42,7 @@ internal object SuppressionLocatorBuilder {
+             "FunctionName" to "standard:function-naming",
+             "PackageName" to "standard:package-name",
+             "PropertyName" to "standard:property-naming",
++            "ConstPropertyName" to "standard:property-naming",
+             "UnusedImport" to "standard:no-unused-imports",
+         )
+     private val SUPPRESS_ANNOTATIONS = setOf("Suppress", "SuppressWarnings")

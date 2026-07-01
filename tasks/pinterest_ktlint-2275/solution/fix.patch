@@ -1,0 +1,189 @@
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index 491e3ef53a..e1460ff7a9 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -6,6 +6,8 @@ This project adheres to [Semantic Versioning](https://semver.org/).
+
+ ### Added
+
++* Add `.editorconfig` property `ktlint_function_naming_ignore_when_annotated_with` so that rule `function-naming` can be ignored based on annotations on that rule. See [function-naming](https://pinterest.github.io/ktlint/1.0.1/rules/standard/#function-naming).
++
+ ### Removed
+
+ ### Fixed
+diff --git a/documentation/snapshot/docs/rules/standard.md b/documentation/snapshot/docs/rules/standard.md
+index f172c4bac1..4018bbea3d 100644
+--- a/documentation/snapshot/docs/rules/standard.md
++++ b/documentation/snapshot/docs/rules/standard.md
+@@ -412,7 +412,10 @@ Enforce naming of function.
+     ```
+
+ !!! note
+-    Functions in files which import a class from package `org.junit`, `org.testng` or `kotlin.test` are considered to be test functions. Functions in such classes are allowed to have underscores in the name. Or function names can be specified between backticks and do not need to adhere to the normal naming convention.
++    When using Compose, you might want to suppress the `function-naming` rule by setting `.editorconfig` property `ktlint_function_naming_ignore_when_annotated_with=Composable`. Furthermore, you can use a dedicated ktlint ruleset like [Compose Rules](https://mrmans0n.github.io/compose-rules/ktlint/) for checking naming conventions for Composable functions.
++
++!!! note
++    Functions in files which import a class from package `org.junit`, `org.testng` or `kotlin.test` are considered to be test functions. Functions in such classes are allowed to have underscores in the name. Also, function names enclosed between backticks do not need to adhere to the normal naming convention.
+
+ This rule can also be suppressed with the IntelliJ IDEA inspection suppression `FunctionName`.
+
+diff --git a/ktlint-rule-engine-core/api/ktlint-rule-engine-core.api b/ktlint-rule-engine-core/api/ktlint-rule-engine-core.api
+index db251cea8f..caf8fc8ca9 100644
+--- a/ktlint-rule-engine-core/api/ktlint-rule-engine-core.api
++++ b/ktlint-rule-engine-core/api/ktlint-rule-engine-core.api
+@@ -506,6 +506,11 @@ public final class com/pinterest/ktlint/rule/engine/core/api/editorconfig/CodeSt
+ 	public static fun values ()[Lcom/pinterest/ktlint/rule/engine/core/api/editorconfig/CodeStyleValue;
+ }
+
++public final class com/pinterest/ktlint/rule/engine/core/api/editorconfig/CommaSeparatedListValueParser : org/ec4j/core/model/PropertyType$PropertyValueParser {
++	public fun <init> ()V
++	public fun parse (Ljava/lang/String;Ljava/lang/String;)Lorg/ec4j/core/model/PropertyType$PropertyValue;
++}
++
+ public final class com/pinterest/ktlint/rule/engine/core/api/editorconfig/EditorConfig {
+ 	public fun <init> ()V
+ 	public fun <init> (Ljava/util/Map;)V
+diff --git a/ktlint-rule-engine-core/src/main/kotlin/com/pinterest/ktlint/rule/engine/core/api/editorconfig/CommaSeparatedListValueParser.kt b/ktlint-rule-engine-core/src/main/kotlin/com/pinterest/ktlint/rule/engine/core/api/editorconfig/CommaSeparatedListValueParser.kt
+new file mode 100644
+index 0000000000..a64355eee4
+--- /dev/null
++++ b/ktlint-rule-engine-core/src/main/kotlin/com/pinterest/ktlint/rule/engine/core/api/editorconfig/CommaSeparatedListValueParser.kt
+@@ -0,0 +1,26 @@
++package com.pinterest.ktlint.rule.engine.core.api.editorconfig
++
++import org.ec4j.core.model.PropertyType
++import org.ec4j.core.model.PropertyType.PropertyValueParser
++
++/**
++ * A [PropertyValueParser] implementation that allows a comma separate list of strings.
++ */
++public class CommaSeparatedListValueParser : PropertyValueParser<Set<String>> {
++    override fun parse(
++        name: String?,
++        value: String?,
++    ): PropertyType.PropertyValue<Set<String>> =
++        if (value == "unset") {
++            PropertyType.PropertyValue.valid(value, emptySet())
++        } else {
++            PropertyType.PropertyValue.valid(
++                value,
++                value
++                    .orEmpty()
++                    .split(",")
++                    .map { it.trim() }
++                    .toSet(),
++            )
++        }
++}
+diff --git a/ktlint-ruleset-standard/api/ktlint-ruleset-standard.api b/ktlint-ruleset-standard/api/ktlint-ruleset-standard.api
+index 8d08fcae8a..e417dad28f 100644
+--- a/ktlint-ruleset-standard/api/ktlint-ruleset-standard.api
++++ b/ktlint-ruleset-standard/api/ktlint-ruleset-standard.api
+@@ -220,10 +220,16 @@ public final class com/pinterest/ktlint/ruleset/standard/rules/FunctionLiteralRu
+ }
+
+ public final class com/pinterest/ktlint/ruleset/standard/rules/FunctionNamingRule : com/pinterest/ktlint/ruleset/standard/StandardRule {
++	public static final field Companion Lcom/pinterest/ktlint/ruleset/standard/rules/FunctionNamingRule$Companion;
+ 	public fun <init> ()V
++	public fun beforeFirstNode (Lcom/pinterest/ktlint/rule/engine/core/api/editorconfig/EditorConfig;)V
+ 	public fun beforeVisitChildNodes (Lorg/jetbrains/kotlin/com/intellij/lang/ASTNode;ZLkotlin/jvm/functions/Function3;)V
+ }
+
++public final class com/pinterest/ktlint/ruleset/standard/rules/FunctionNamingRule$Companion {
++	public final fun getIGNORE_WHEN_ANNOTATED_WITH_PROPERTY ()Lcom/pinterest/ktlint/rule/engine/core/api/editorconfig/EditorConfigProperty;
++}
++
+ public final class com/pinterest/ktlint/ruleset/standard/rules/FunctionNamingRuleKt {
+ 	public static final fun getFUNCTION_NAMING_RULE_ID ()Lcom/pinterest/ktlint/rule/engine/core/api/RuleId;
+ }
+diff --git a/ktlint-ruleset-standard/src/main/kotlin/com/pinterest/ktlint/ruleset/standard/rules/FunctionNamingRule.kt b/ktlint-ruleset-standard/src/main/kotlin/com/pinterest/ktlint/ruleset/standard/rules/FunctionNamingRule.kt
+index 16f78800c2..02d8733b3c 100644
+--- a/ktlint-ruleset-standard/src/main/kotlin/com/pinterest/ktlint/ruleset/standard/rules/FunctionNamingRule.kt
++++ b/ktlint-ruleset-standard/src/main/kotlin/com/pinterest/ktlint/ruleset/standard/rules/FunctionNamingRule.kt
+@@ -1,5 +1,7 @@
+ package com.pinterest.ktlint.ruleset.standard.rules
+
++import com.pinterest.ktlint.rule.engine.core.api.ElementType
++import com.pinterest.ktlint.rule.engine.core.api.ElementType.ANNOTATION_ENTRY
+ import com.pinterest.ktlint.rule.engine.core.api.ElementType.FUN
+ import com.pinterest.ktlint.rule.engine.core.api.ElementType.FUN_KEYWORD
+ import com.pinterest.ktlint.rule.engine.core.api.ElementType.IDENTIFIER
+@@ -12,9 +14,13 @@ import com.pinterest.ktlint.rule.engine.core.api.SinceKtlint
+ import com.pinterest.ktlint.rule.engine.core.api.SinceKtlint.Status.EXPERIMENTAL
+ import com.pinterest.ktlint.rule.engine.core.api.SinceKtlint.Status.STABLE
+ import com.pinterest.ktlint.rule.engine.core.api.children
++import com.pinterest.ktlint.rule.engine.core.api.editorconfig.CommaSeparatedListValueParser
++import com.pinterest.ktlint.rule.engine.core.api.editorconfig.EditorConfig
++import com.pinterest.ktlint.rule.engine.core.api.editorconfig.EditorConfigProperty
+ import com.pinterest.ktlint.rule.engine.core.api.nextCodeSibling
+ import com.pinterest.ktlint.ruleset.standard.StandardRule
+ import com.pinterest.ktlint.ruleset.standard.rules.internal.regExIgnoringDiacriticsAndStrokesOnLetters
++import org.ec4j.core.model.PropertyType
+ import org.jetbrains.kotlin.com.intellij.lang.ASTNode
+ import org.jetbrains.kotlin.psi.KtFunction
+ import org.jetbrains.kotlin.psi.KtImportDirective
+@@ -24,8 +30,17 @@ import org.jetbrains.kotlin.psi.KtImportDirective
+  */
+ @SinceKtlint("0.48", EXPERIMENTAL)
+ @SinceKtlint("1.0", STABLE)
+-public class FunctionNamingRule : StandardRule("function-naming") {
++public class FunctionNamingRule :
++    StandardRule(
++        id = "function-naming",
++        usesEditorConfigProperties = setOf(IGNORE_WHEN_ANNOTATED_WITH_PROPERTY),
++    ) {
+     private var isTestClass = false
++    private var ignoreWhenAnnotatedWith = IGNORE_WHEN_ANNOTATED_WITH_PROPERTY.defaultValue
++
++    override fun beforeFirstNode(editorConfig: EditorConfig) {
++        ignoreWhenAnnotatedWith = editorConfig[IGNORE_WHEN_ANNOTATED_WITH_PROPERTY]
++    }
+
+     override fun beforeVisitChildNodes(
+         node: ASTNode,
+@@ -51,7 +66,8 @@ public class FunctionNamingRule : StandardRule("function-naming") {
+                     node.isTestMethod() ||
+                     node.hasValidFunctionName() ||
+                     node.isAnonymousFunction() ||
+-                    node.isOverrideFunction()
++                    node.isOverrideFunction() ||
++                    node.isAnnotatedWithAnyOf(ignoreWhenAnnotatedWith)
+             }?.let {
+                 val identifierOffset =
+                     node
+@@ -101,9 +117,32 @@ public class FunctionNamingRule : StandardRule("function-naming") {
+             .orEmpty()
+             .any { it.elementType == OVERRIDE_KEYWORD }
+
+-    private companion object {
+-        val VALID_FUNCTION_NAME_REGEXP = "[a-z][A-Za-z\\d]*".regExIgnoringDiacriticsAndStrokesOnLetters()
+-        val VALID_TEST_FUNCTION_NAME_REGEXP = "(`.*`)|([a-z][A-Za-z\\d_]*)".regExIgnoringDiacriticsAndStrokesOnLetters()
++    private fun ASTNode.isAnnotatedWithAnyOf(excludeWhenAnnotatedWith: Set<String>) =
++        findChildByType(MODIFIER_LIST)
++            ?.children()
++            ?.filter { it.elementType == ANNOTATION_ENTRY }
++            ?.mapNotNull { it.findChildByType(ElementType.CONSTRUCTOR_CALLEE) }
++            ?.mapNotNull { it.findChildByType(ElementType.TYPE_REFERENCE) }
++            ?.mapNotNull { it.findChildByType(ElementType.USER_TYPE) }
++            ?.mapNotNull { it.findChildByType(ElementType.REFERENCE_EXPRESSION) }
++            ?.mapNotNull { it.findChildByType(IDENTIFIER) }
++            ?.any { it.text in excludeWhenAnnotatedWith }
++            ?: false
++
++    public companion object {
++        public val IGNORE_WHEN_ANNOTATED_WITH_PROPERTY: EditorConfigProperty<Set<String>> =
++            EditorConfigProperty(
++                type =
++                    PropertyType.LowerCasingPropertyType(
++                        "ktlint_function_naming_ignore_when_annotated_with",
++                        "Ignore functions that are annotated with. Value is a comma separated list of name without the '@' prefix.",
++                        CommaSeparatedListValueParser(),
++                    ),
++                defaultValue = setOf("unset"),
++            )
++
++        private val VALID_FUNCTION_NAME_REGEXP = "[a-z][A-Za-z\\d]*".regExIgnoringDiacriticsAndStrokesOnLetters()
++        private val VALID_TEST_FUNCTION_NAME_REGEXP = "(`.*`)|([a-z][A-Za-z\\d_]*)".regExIgnoringDiacriticsAndStrokesOnLetters()
+         private const val KOTLIN_TEST = "kotlin.test"
+         private const val ORG_JUNIT = "org.junit"
+         private const val ORG_TESTNG = "org.testng"

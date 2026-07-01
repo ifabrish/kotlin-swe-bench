@@ -1,0 +1,42 @@
+diff --git a/ktlint-rule-engine-core/src/test/kotlin/com/pinterest/ktlint/rule/engine/core/api/RuleKtTest.kt b/ktlint-rule-engine-core/src/test/kotlin/com/pinterest/ktlint/rule/engine/core/api/RuleKtTest.kt
+index 3123b46af4..003966cb13 100644
+--- a/ktlint-rule-engine-core/src/test/kotlin/com/pinterest/ktlint/rule/engine/core/api/RuleKtTest.kt
++++ b/ktlint-rule-engine-core/src/test/kotlin/com/pinterest/ktlint/rule/engine/core/api/RuleKtTest.kt
+@@ -12,7 +12,7 @@ class RuleKtTest {
+     fun `Given a rule with an unqualified rule id than the rule can not be instantiated`() {
+         assertThatThrownBy { creatRule("some-unqualified-rule-id") }
+             .isInstanceOf(IllegalArgumentException::class.java)
+-            .hasMessage("Rule id 'some-unqualified-rule-id' must match '[a-z]+(-[a-z]+)*:[a-z]+(-[a-z]+)*'")
++            .hasMessage("Rule with id 'some-unqualified-rule-id' must match regexp '[a-z]+(-[a-z]+)*:[a-z]+(-[a-z]+)*'")
+     }
+
+     @ParameterizedTest(name = "Qualified rule id: `{0}`, expected rule id: `{1}`")
+diff --git a/ktlint-rule-engine/src/test/kotlin/com/pinterest/ktlint/rule/engine/internal/SuppressionLocatorBuilderTest.kt b/ktlint-rule-engine/src/test/kotlin/com/pinterest/ktlint/rule/engine/internal/SuppressionLocatorBuilderTest.kt
+index bcaaca242d..c0acb7df7c 100644
+--- a/ktlint-rule-engine/src/test/kotlin/com/pinterest/ktlint/rule/engine/internal/SuppressionLocatorBuilderTest.kt
++++ b/ktlint-rule-engine/src/test/kotlin/com/pinterest/ktlint/rule/engine/internal/SuppressionLocatorBuilderTest.kt
+@@ -214,6 +214,24 @@ class SuppressionLocatorBuilderTest {
+         assertThat(lint(code)).isEmpty()
+     }
+
++    @Test
++    fun `Given an invalid rule id then ignore it without throwing an exception`() {
++        val code =
++            """
++            @file:Suppress("ktlint:standard:SOME-INVALID-RULE-ID-1")
++
++            @Suppress("ktlint:standard:SOME-INVALID-RULE-ID-2")
++            class Foo {
++                /* ktlint-disable standard:SOME-INVALID-RULE-ID-3 */
++                fun foo() {
++                    val fooNotReported = "foo" // ktlint-disable standard:SOME-INVALID-RULE-ID-4
++                }
++                /* ktlint-enable standard:SOME-INVALID-RULE-ID-3 */
++            }
++            """.trimIndent()
++        assertThat(lint(code)).isEmpty()
++    }
++
+     @Nested
+     inner class `Given that formatter tags are enabled` {
+         @Test

@@ -1,0 +1,13 @@
+# repo  base-tag  dockerfile   (image: kotlin-bench/<repo>:<base-tag>)
+ankidroid_anki-android base Dockerfile.base
+detekt_detekt base Dockerfile.base
+gradleup_shadow base Dockerfile.base
+hannah-sten_texify-idea base Dockerfile.base
+kotlin_dataframe base Dockerfile.base
+kotlin_dataframe base-JDK-17 Dockerfile.base-JDK-17
+oss-review-toolkit_ort base Dockerfile.base
+oss-review-toolkit_ort base-JDK-11 Dockerfile.base-JDK-11
+pinterest_ktlint base Dockerfile.base
+pinterest_ktlint base-JDK-17 Dockerfile.base-JDK-17
+square_okhttp base-JDK-17 Dockerfile.base-JDK-17
+square_okhttp base-JDK-8 Dockerfile.base-JDK-8

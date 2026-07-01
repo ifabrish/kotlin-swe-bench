@@ -1,0 +1,177 @@
+diff --git a/.ort.yml b/.ort.yml
+index 551e057b89641..0210a2c704ab6 100644
+--- a/.ort.yml
++++ b/.ort.yml
+@@ -61,7 +61,7 @@ curations:
+     reason: "DATA_OF"
+     comment: >-
+       These files are part of PHP Composer and include a mapping from human readable strings to SPDX license ids.
+-  - path: "docs/**.md"
++  - path: "docs/**/*.md"
+     concluded_license: "Apache-2.0"
+     reason: "DOCUMENTATION_OF"
+     comment: >-
+diff --git a/docs/config-file-ort-yml.md b/docs/config-file-ort-yml.md
+index 3d5cc2442edaa..ec965a5596146 100644
+--- a/docs/config-file-ort-yml.md
++++ b/docs/config-file-ort-yml.md
+@@ -144,7 +144,7 @@ e.g.:
+ ```yaml
+ curations:
+   license_findings:
+-  - path: "src/**.cpp"
++  - path: "src/**/*.cpp"
+     start_lines: "3"
+     line_count: 11
+     detected_license: "GPL-2.0-only"
+diff --git a/docs/config-file-package-configuration-yml.md b/docs/config-file-package-configuration-yml.md
+index f1eb3573a8f3c..b008ac77bc95b 100644
+--- a/docs/config-file-package-configuration-yml.md
++++ b/docs/config-file-package-configuration-yml.md
+@@ -54,7 +54,7 @@ see [excluding paths](config-file-ort-yml.md#excluding-paths) and
+     reason: "DOCUMENTATION_OF"
+     comment: "This directory contains documentation which is not distributed."
+   license_finding_curations:
+-  - path: "src/**.cpp"
++  - path: "src/**/*.cpp"
+     start_lines: "3"
+     line_count: 11
+     detected_license: "GPL-2.0-only"
+@@ -137,7 +137,7 @@ The code below shows an example for `packages.yml`:
+     reason: "DOCUMENTATION_OF"
+     comment: "This directory contains documentation which is not distributed."
+   license_finding_curations:
+-  - path: "src/**.cpp"
++  - path: "src/**/*.cpp"
+     start_lines: "3"
+     line_count: 11
+     detected_license: "GPL-2.0-only"
+@@ -151,7 +151,7 @@ The code below shows an example for `packages.yml`:
+     reason: "DOCUMENTATION_OF"
+     comment: "This directory contains documentation which is not distributed."
+   license_finding_curations:
+-  - path: "src/**.cpp"
++  - path: "src/**/*.cpp"
+     start_lines: "3"
+     line_count: 11
+     detected_license: "GPL-2.0-only"
+diff --git a/examples/curations.ort.yml b/examples/curations.ort.yml
+index 255c700972d6d..48c20c39aff19 100644
+--- a/examples/curations.ort.yml
++++ b/examples/curations.ort.yml
+@@ -1,6 +1,6 @@
+ curations:
+   license_findings:
+-  - path: "src/**.cpp"
++  - path: "src/**/*.cpp"
+     start_lines: "3,8"
+     line_count: 1
+     detected_license: "GPL-2.0-only"
+diff --git a/helper-cli/src/main/kotlin/commands/ListLicensesCommand.kt b/helper-cli/src/main/kotlin/commands/ListLicensesCommand.kt
+index dbe0e24ce2ab7..8859473621c55 100644
+--- a/helper-cli/src/main/kotlin/commands/ListLicensesCommand.kt
++++ b/helper-cli/src/main/kotlin/commands/ListLicensesCommand.kt
+@@ -35,8 +35,6 @@ import com.github.ajalt.clikt.parameters.types.file
+ 
+ import java.io.File
+ import java.lang.IllegalArgumentException
+-import java.nio.file.FileSystems
+-import java.nio.file.Paths
+ 
+ import org.ossreviewtoolkit.helper.utils.PackageConfigurationOption
+ import org.ossreviewtoolkit.helper.utils.createProvider
+@@ -52,6 +50,7 @@ import org.ossreviewtoolkit.model.Provenance
+ import org.ossreviewtoolkit.model.RepositoryProvenance
+ import org.ossreviewtoolkit.model.Severity
+ import org.ossreviewtoolkit.model.TextLocation
++import org.ossreviewtoolkit.utils.common.FileMatcher
+ import org.ossreviewtoolkit.utils.common.expandTilde
+ import org.ossreviewtoolkit.utils.spdx.SpdxSingleLicenseExpression
+ 
+@@ -151,9 +150,8 @@ internal class ListLicensesCommand : CliktCommand(
+     private val fileAllowList by option(
+         "--file-allow-list",
+         help = "Output only license findings for files whose paths matches any of the given glob expressions."
+-    ).convert { csv ->
+-        csv.split(',').map { pattern -> FileSystems.getDefault().getPathMatcher("glob:$pattern") }
+-    }.default(emptyList())
++    ).split(",")
++        .default(emptyList())
+ 
+     override fun run() {
+         val ortResult = readOrtResult(ortFile).replaceConfig(repositoryConfigurationFile)
+@@ -190,9 +188,7 @@ internal class ListLicensesCommand : CliktCommand(
+                     !offendingOnly || license in violatedRulesByLicense
+                 }.mapValues { (license, locations) ->
+                     locations.filter { location ->
+-                        val isAllowedFile = fileAllowList.isEmpty() || fileAllowList.any {
+-                            it.matches(Paths.get(location.path))
+-                        }
++                        val isAllowedFile = fileAllowList.isEmpty() || FileMatcher.match(fileAllowList, location.path)
+ 
+                         val isIncluded = !omitExcluded || !isPathExcluded(provenance, location.path) ||
+                                 ignoreExcludedRuleIds.intersect(violatedRulesByLicense[license].orEmpty()).isNotEmpty()
+diff --git a/model/src/main/kotlin/config/PathExclude.kt b/model/src/main/kotlin/config/PathExclude.kt
+index 6b2aa48b5af90..a3c7dbf79db4f 100644
+--- a/model/src/main/kotlin/config/PathExclude.kt
++++ b/model/src/main/kotlin/config/PathExclude.kt
+@@ -21,8 +21,7 @@ package org.ossreviewtoolkit.model.config
+ 
+ import com.fasterxml.jackson.annotation.JsonInclude
+ 
+-import java.nio.file.FileSystems
+-import java.nio.file.Paths
++import org.ossreviewtoolkit.utils.common.FileMatcher
+ 
+ /**
+  * Defines paths which should be excluded. Each file that is matched by the [glob][pattern] is marked as excluded. If a
+@@ -46,9 +45,11 @@ data class PathExclude(
+     @JsonInclude(JsonInclude.Include.NON_EMPTY)
+     val comment: String = ""
+ ) {
+-    private val glob by lazy {
+-        FileSystems.getDefault().getPathMatcher("glob:${pattern.removePrefix("./")}")
+-    }
+-
+-    fun matches(path: String) = glob.matches(Paths.get(path))
++    /**
++     * Return true if and only if this [PathExclude] matches the given [path].
++     */
++    fun matches(path: String) = FileMatcher.match(
++        pattern = pattern.removePrefix("./"),
++        path = path
++    )
+ }
+diff --git a/model/src/main/kotlin/utils/FindingCurationMatcher.kt b/model/src/main/kotlin/utils/FindingCurationMatcher.kt
+index 6183cff13b73b..3e5168bd498ad 100644
+--- a/model/src/main/kotlin/utils/FindingCurationMatcher.kt
++++ b/model/src/main/kotlin/utils/FindingCurationMatcher.kt
+@@ -19,12 +19,10 @@
+ 
+ package org.ossreviewtoolkit.model.utils
+ 
+-import java.nio.file.FileSystems
+-import java.nio.file.Paths
+-
+ import org.ossreviewtoolkit.model.LicenseFinding
+ import org.ossreviewtoolkit.model.config.LicenseFindingCuration
+ import org.ossreviewtoolkit.model.licenses.LicenseFindingCurationResult
++import org.ossreviewtoolkit.utils.common.FileMatcher
+ import org.ossreviewtoolkit.utils.spdx.SpdxConstants
+ 
+ /**
+@@ -35,10 +33,10 @@ class FindingCurationMatcher {
+         finding: LicenseFinding,
+         curation: LicenseFindingCuration,
+         relativeFindingPath: String
+-    ): Boolean =
+-        FileSystems.getDefault()
+-            .getPathMatcher("glob:${curation.path}")
+-            .matches(Paths.get(finding.location.prependPath(relativeFindingPath)))
++    ): Boolean = FileMatcher.match(
++        pattern = curation.path,
++        path = finding.location.prependPath(relativeFindingPath)
++    )
+ 
+     private fun isStartLineMatching(finding: LicenseFinding, curation: LicenseFindingCuration): Boolean =
+         curation.startLines.isEmpty() || curation.startLines.any { it == finding.location.startLine }

@@ -1,0 +1,76 @@
+diff --git a/plugins/package-managers/swiftpm/src/main/kotlin/SwiftPm.kt b/plugins/package-managers/swiftpm/src/main/kotlin/SwiftPm.kt
+index 745162515629b..c4b1bc205662e 100644
+--- a/plugins/package-managers/swiftpm/src/main/kotlin/SwiftPm.kt
++++ b/plugins/package-managers/swiftpm/src/main/kotlin/SwiftPm.kt
+@@ -61,7 +61,8 @@ class SwiftPm(
+     analyzerConfig: AnalyzerConfiguration,
+     repoConfig: RepositoryConfiguration
+ ) : PackageManager(name, analysisRoot, analyzerConfig, repoConfig), CommandLineTool {
+-    private val graphBuilder = DependencyGraphBuilder(SwiftPmDependencyHandler())
++    private val dependencyHandler = SwiftPmDependencyHandler()
++    private val graphBuilder = DependencyGraphBuilder(dependencyHandler)
+ 
+     class Factory : AbstractPackageManagerFactory<SwiftPm>(PROJECT_TYPE) {
+         override val globsForDefinitionFiles = listOf(PACKAGE_SWIFT_NAME, PACKAGE_RESOLVED_NAME)
+@@ -123,6 +124,7 @@ class SwiftPm(
+     private fun resolveDefinitionFileDependencies(packageSwiftFile: File): List<ProjectAnalyzerResult> {
+         val project = projectFromDefinitionFile(packageSwiftFile)
+ 
++        // TODO: Issues might be thrown into stderr. Parse them and add it them to the result as well.
+         val result = run(
+             packageSwiftFile.parentFile,
+             "package",
+@@ -134,17 +136,22 @@ class SwiftPm(
+         val swiftPackage = json.decodeFromString<SwiftPackage>(result)
+         val qualifiedScopeName = DependencyGraph.qualifyScope(scopeName = DEPENDENCIES_SCOPE_NAME, project = project)
+ 
++        val issues = mutableListOf<Issue>()
++
++        dependencyHandler.packages = parseLockfile(packageSwiftFile.resolveSibling(PACKAGE_RESOLVED_NAME)).onFailure {
++            issues += Issue(source = managerName, message = it.message.orEmpty())
++        }.getOrDefault(emptySet())
++
+         swiftPackage.dependencies.onEach { graphBuilder.addDependency(qualifiedScopeName, it) }
+-            .map { libraryDependency -> libraryDependency.toPackage() }
+-            .also { graphBuilder.addPackages(it) }
++
++        graphBuilder.addPackages(dependencyHandler.packages)
+ 
+         return listOf(
+             ProjectAnalyzerResult(
+                 project = project.copy(scopeNames = setOf(DEPENDENCIES_SCOPE_NAME)),
+                 // Packages are set by the dependency handler.
+                 packages = emptySet(),
+-                // TODO: Issues might be thrown into stderr. Parse them and add it them to the result as well.
+-                issues = emptyList()
++                issues = issues
+             )
+         )
+     }
+diff --git a/plugins/package-managers/swiftpm/src/main/kotlin/SwiftPmDependencyHandler.kt b/plugins/package-managers/swiftpm/src/main/kotlin/SwiftPmDependencyHandler.kt
+index 4468e1b18b153..787197c18d8e9 100644
+--- a/plugins/package-managers/swiftpm/src/main/kotlin/SwiftPmDependencyHandler.kt
++++ b/plugins/package-managers/swiftpm/src/main/kotlin/SwiftPmDependencyHandler.kt
+@@ -37,5 +37,8 @@ class SwiftPmDependencyHandler : DependencyHandler<Dependency> {
+ 
+     override fun linkageFor(dependency: Dependency): PackageLinkage = DYNAMIC
+ 
+-    override fun createPackage(dependency: Dependency, issues: MutableList<Issue>): Package = dependency.toPackage()
++    override fun createPackage(dependency: Dependency, issues: MutableList<Issue>): Package? =
++        packages.find { pkg -> pkg.id.copy(version = "") == dependency.id.copy(version = "") }
++
++    var packages: Set<Package> = emptySet()
+ }
+diff --git a/plugins/package-managers/swiftpm/src/main/kotlin/SwiftPmModel.kt b/plugins/package-managers/swiftpm/src/main/kotlin/SwiftPmModel.kt
+index 8f8f56fead1d6..9d63fedc27e92 100644
+--- a/plugins/package-managers/swiftpm/src/main/kotlin/SwiftPmModel.kt
++++ b/plugins/package-managers/swiftpm/src/main/kotlin/SwiftPmModel.kt
+@@ -93,7 +93,7 @@ internal val SwiftPackage.Dependency.id: Identifier
+         type = PACKAGE_TYPE,
+         namespace = "",
+         name = getCanonicalName(repositoryUrl),
+-        version = version
++        version = version.takeUnless { it == "unspecified" }.orEmpty()
+     )
+ 
+ internal fun SwiftPackage.Dependency.toPackage(): Package {

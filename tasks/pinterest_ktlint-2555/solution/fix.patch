@@ -1,0 +1,184 @@
+diff --git a/documentation/snapshot/docs/rules/experimental.md b/documentation/snapshot/docs/rules/experimental.md
+index a03fb6aae2..287503a810 100644
+--- a/documentation/snapshot/docs/rules/experimental.md
++++ b/documentation/snapshot/docs/rules/experimental.md
+@@ -648,3 +648,37 @@ Braces required for multiline for, while, and do statements.
+     ```
+
+ Rule id: `multiline-loop` (`standard` rule set)
++
++## Square brackets spacing
++
++Check for spacing around square brackets.
++
++=== "[:material-heart:](#) Ktlint"
++
++    ```kotlin
++    val foo1 = bar[1]
++    val foo2 =
++       bar[
++           1,
++           2,
++       ]
++
++    @Foo(
++        fooBar = ["foo", "bar"],
++        fooBaz = [
++            "foo",
++            "baz",
++        ],
++    )
++    fun foo() {}
++    ```
++
++=== "[:material-heart-off-outline:](#) Disallowed"
++
++    ```kotlin
++    val foo1 = bar [1]
++    val foo2 = bar[ 1]
++    val foo3 = bar[1 ]
++    ```
++
++Rule id: `square-brackets-spacing` (`standard` rule set)
+diff --git a/ktlint-ruleset-standard/api/ktlint-ruleset-standard.api b/ktlint-ruleset-standard/api/ktlint-ruleset-standard.api
+index 90d7eb6151..e858e4c22c 100644
+--- a/ktlint-ruleset-standard/api/ktlint-ruleset-standard.api
++++ b/ktlint-ruleset-standard/api/ktlint-ruleset-standard.api
+@@ -789,6 +789,15 @@ public final class com/pinterest/ktlint/ruleset/standard/rules/SpacingAroundRang
+ 	public static final fun getSPACING_AROUND_RANGE_OPERATOR_RULE_ID ()Lcom/pinterest/ktlint/rule/engine/core/api/RuleId;
+ }
+
++public final class com/pinterest/ktlint/ruleset/standard/rules/SpacingAroundSquareBracketsRule : com/pinterest/ktlint/ruleset/standard/StandardRule {
++	public fun <init> ()V
++	public fun beforeVisitChildNodes (Lorg/jetbrains/kotlin/com/intellij/lang/ASTNode;ZLkotlin/jvm/functions/Function3;)V
++}
++
++public final class com/pinterest/ktlint/ruleset/standard/rules/SpacingAroundSquareBracketsRuleKt {
++	public static final fun getSPACING_AROUND_SQUARE_BRACKETS_RULE_ID ()Lcom/pinterest/ktlint/rule/engine/core/api/RuleId;
++}
++
+ public final class com/pinterest/ktlint/ruleset/standard/rules/SpacingAroundUnaryOperatorRule : com/pinterest/ktlint/ruleset/standard/StandardRule {
+ 	public fun <init> ()V
+ 	public fun beforeVisitChildNodes (Lorg/jetbrains/kotlin/com/intellij/lang/ASTNode;ZLkotlin/jvm/functions/Function3;)V
+diff --git a/ktlint-ruleset-standard/src/main/kotlin/com/pinterest/ktlint/ruleset/standard/StandardRuleSetProvider.kt b/ktlint-ruleset-standard/src/main/kotlin/com/pinterest/ktlint/ruleset/standard/StandardRuleSetProvider.kt
+index 25fd4e52da..fccfe4505a 100644
+--- a/ktlint-ruleset-standard/src/main/kotlin/com/pinterest/ktlint/ruleset/standard/StandardRuleSetProvider.kt
++++ b/ktlint-ruleset-standard/src/main/kotlin/com/pinterest/ktlint/ruleset/standard/StandardRuleSetProvider.kt
+@@ -80,6 +80,7 @@ import com.pinterest.ktlint.ruleset.standard.rules.SpacingAroundKeywordRule
+ import com.pinterest.ktlint.ruleset.standard.rules.SpacingAroundOperatorsRule
+ import com.pinterest.ktlint.ruleset.standard.rules.SpacingAroundParensRule
+ import com.pinterest.ktlint.ruleset.standard.rules.SpacingAroundRangeOperatorRule
++import com.pinterest.ktlint.ruleset.standard.rules.SpacingAroundSquareBracketsRule
+ import com.pinterest.ktlint.ruleset.standard.rules.SpacingAroundUnaryOperatorRule
+ import com.pinterest.ktlint.ruleset.standard.rules.SpacingBetweenDeclarationsWithAnnotationsRule
+ import com.pinterest.ktlint.ruleset.standard.rules.SpacingBetweenDeclarationsWithCommentsRule
+@@ -179,6 +180,7 @@ public class StandardRuleSetProvider : RuleSetProviderV3(RuleSetId.STANDARD) {
+             RuleProvider { SpacingAroundOperatorsRule() },
+             RuleProvider { SpacingAroundParensRule() },
+             RuleProvider { SpacingAroundRangeOperatorRule() },
++            RuleProvider { SpacingAroundSquareBracketsRule() },
+             RuleProvider { SpacingAroundUnaryOperatorRule() },
+             RuleProvider { SpacingBetweenDeclarationsWithAnnotationsRule() },
+             RuleProvider { SpacingBetweenDeclarationsWithCommentsRule() },
+diff --git a/ktlint-ruleset-standard/src/main/kotlin/com/pinterest/ktlint/ruleset/standard/rules/SpacingAroundSquareBracketsRule.kt b/ktlint-ruleset-standard/src/main/kotlin/com/pinterest/ktlint/ruleset/standard/rules/SpacingAroundSquareBracketsRule.kt
+new file mode 100644
+index 0000000000..08ff2a9c88
+--- /dev/null
++++ b/ktlint-ruleset-standard/src/main/kotlin/com/pinterest/ktlint/ruleset/standard/rules/SpacingAroundSquareBracketsRule.kt
+@@ -0,0 +1,96 @@
++package com.pinterest.ktlint.ruleset.standard.rules
++
++import com.pinterest.ktlint.rule.engine.core.api.ElementType.COLLECTION_LITERAL_EXPRESSION
++import com.pinterest.ktlint.rule.engine.core.api.ElementType.KDOC_MARKDOWN_LINK
++import com.pinterest.ktlint.rule.engine.core.api.ElementType.LBRACKET
++import com.pinterest.ktlint.rule.engine.core.api.ElementType.RBRACKET
++import com.pinterest.ktlint.rule.engine.core.api.RuleId
++import com.pinterest.ktlint.rule.engine.core.api.SinceKtlint
++import com.pinterest.ktlint.rule.engine.core.api.SinceKtlint.Status.EXPERIMENTAL
++import com.pinterest.ktlint.rule.engine.core.api.isWhiteSpaceWithoutNewline
++import com.pinterest.ktlint.rule.engine.core.api.nextLeaf
++import com.pinterest.ktlint.rule.engine.core.api.prevLeaf
++import com.pinterest.ktlint.ruleset.standard.StandardRule
++import org.jetbrains.kotlin.com.intellij.lang.ASTNode
++
++/**
++ * Ensures there are no extra spaces around square brackets.
++ *
++ * See https://kotlinlang.org/docs/reference/coding-conventions.html#horizontal-whitespace
++ */
++@SinceKtlint("1.2", EXPERIMENTAL)
++public class SpacingAroundSquareBracketsRule : StandardRule("square-brackets-spacing") {
++    override fun beforeVisitChildNodes(
++        node: ASTNode,
++        autoCorrect: Boolean,
++        emit: (offset: Int, errorMessage: String, canBeAutoCorrected: Boolean) -> Unit,
++    ) {
++        if (node.elementType == LBRACKET || node.elementType == RBRACKET) {
++            val prevLeaf = node.prevLeaf()
++            val nextLeaf = node.nextLeaf()
++            val spacingBefore =
++                when (node.treeParent.elementType) {
++                    KDOC_MARKDOWN_LINK -> {
++                        // Allow:
++                        //     /**
++                        //      * @see [Foo] for more information,
++                        //      */
++                        //     fun foo() {}
++                        false
++                    }
++                    COLLECTION_LITERAL_EXPRESSION -> {
++                        // Allow:
++                        //     @Foo(
++                        //        fooBar = ["foo", "bar"],
++                        //        fooBaz = [
++                        //            "foo"
++                        //        ]
++                        // Disallow:
++                        //     @Foo(fooBar = ["foo", "bar" ])
++                        node.elementType == RBRACKET && prevLeaf.isWhiteSpaceWithoutNewline()
++                    }
++                    else -> {
++                        prevLeaf.isWhiteSpaceWithoutNewline()
++                    }
++                }
++            val spacingAfter =
++                // Allow:
++                //      val foo = bar[
++                //         1,
++                //         baz
++                //     ]
++                // and
++                //     @Foo(
++                //        fooBar = ["foo", "bar"],
++                //        fooBaz = [
++                //            "foo"
++                //        ]
++                // Disallow:
++                //     @Foo(fooBar = [ "foo", "bar"])
++                node.elementType == LBRACKET && nextLeaf.isWhiteSpaceWithoutNewline()
++            when {
++                spacingBefore && spacingAfter -> {
++                    emit(node.startOffset, "Unexpected spacing around '${node.text}'", true)
++                    if (autoCorrect) {
++                        prevLeaf!!.treeParent.removeChild(prevLeaf)
++                        nextLeaf!!.treeParent.removeChild(nextLeaf)
++                    }
++                }
++                spacingBefore -> {
++                    emit(prevLeaf!!.startOffset, "Unexpected spacing before '${node.text}'", true)
++                    if (autoCorrect) {
++                        prevLeaf.treeParent.removeChild(prevLeaf)
++                    }
++                }
++                spacingAfter -> {
++                    emit(node.startOffset + 1, "Unexpected spacing after '${node.text}'", true)
++                    if (autoCorrect) {
++                        nextLeaf!!.treeParent.removeChild(nextLeaf)
++                    }
++                }
++            }
++        }
++    }
++}
++
++public val SPACING_AROUND_SQUARE_BRACKETS_RULE_ID: RuleId = SpacingAroundSquareBracketsRule().ruleId
