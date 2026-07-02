@@ -2,6 +2,7 @@
 repository_owner = "pinterest"
 repository_name = "ktlint"
 repository_url = "https://github.com/pinterest/ktlint"
+license = "MIT"
 code_change_type = "pr"
 code_change_id = "2263"
 code_change_url = "https://github.com/pinterest/ktlint/pull/2263"

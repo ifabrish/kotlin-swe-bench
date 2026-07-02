@@ -2,6 +2,7 @@
 repository_owner = "square"
 repository_name = "okhttp"
 repository_url = "https://github.com/square/okhttp"
+license = "Apache-2.0"
 code_change_type = "pr"
 code_change_id = "8968"
 code_change_url = "https://github.com/square/okhttp/pull/8968"

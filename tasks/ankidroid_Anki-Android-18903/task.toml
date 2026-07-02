@@ -2,6 +2,7 @@
 repository_owner = "ankidroid"
 repository_name = "Anki-Android"
 repository_url = "https://github.com/ankidroid/Anki-Android"
+license = "GPL-3.0"
 code_change_type = "pr"
 code_change_id = "18903"
 code_change_url = "https://github.com/ankidroid/Anki-Android/pull/18903"

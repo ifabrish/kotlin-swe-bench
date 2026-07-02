@@ -10,17 +10,17 @@ directory with its own reproducible Docker environment, instruction, gold soluti
 
 105 tasks across eight open-source Kotlin repositories:
 
-| Repository | Tasks |
-| :--- | ---: |
-| [pinterest/ktlint](https://github.com/pinterest/ktlint) | 43 |
-| [detekt/detekt](https://github.com/detekt/detekt) | 28 |
-| [oss-review-toolkit/ort](https://github.com/oss-review-toolkit/ort) | 12 |
-| [Hannah-Sten/TeXiFy-IDEA](https://github.com/Hannah-Sten/TeXiFy-IDEA) | 8 |
-| [ankidroid/Anki-Android](https://github.com/ankidroid/Anki-Android) | 6 |
-| [Kotlin/dataframe](https://github.com/Kotlin/dataframe) | 5 |
-| [square/okhttp](https://github.com/square/okhttp) | 2 |
-| [GradleUp/shadow](https://github.com/GradleUp/shadow) | 1 |
-| **Total** | **105** |
+| Repository | License | Tasks |
+| :--- | :--- | ---: |
+| [pinterest/ktlint](https://github.com/pinterest/ktlint) | MIT | 43 |
+| [detekt/detekt](https://github.com/detekt/detekt) | Apache-2.0 | 28 |
+| [oss-review-toolkit/ort](https://github.com/oss-review-toolkit/ort) | Apache-2.0 | 12 |
+| [Hannah-Sten/TeXiFy-IDEA](https://github.com/Hannah-Sten/TeXiFy-IDEA) | MIT | 8 |
+| [ankidroid/Anki-Android](https://github.com/ankidroid/Anki-Android) | GPL-3.0 | 6 |
+| [Kotlin/dataframe](https://github.com/Kotlin/dataframe) | Apache-2.0 | 5 |
+| [square/okhttp](https://github.com/square/okhttp) | Apache-2.0 | 2 |
+| [GradleUp/shadow](https://github.com/GradleUp/shadow) | Apache-2.0 | 1 |
+| **Total** | | **105** |
 
 For every task the dataset captures:
 
@@ -57,11 +57,15 @@ tasks/ankidroid_Anki-Android-18903/
 ### `task.toml`
 
 ```toml
-[metadata.source]      # provenance: repo, PR/issue URLs, base info
+[metadata.source]      # provenance: repo, PR/issue URLs, upstream SPDX license, base info
 [verifier]             # verification timeout
 [agent]                # agent solving timeout
 [environment]          # build timeout, cpus, memory_mb, allow_internet
 ```
+
+`[metadata.source]` records a `license` marker holding the SPDX identifier of the
+upstream repository the task is derived from (e.g. `license = "Apache-2.0"`), so each
+task carries the provenance of its source project's license.
 
 ### Scoring
 
@@ -122,4 +126,6 @@ harbor run -p tasks -a "<agent>" -m "<model>"
 ## License
 
 See [LICENSE](LICENSE). Tasks are derived from open-source repositories; each upstream project
-retains its own license.
+retains its own license. The SPDX identifier of the source project's license is recorded in the
+`license` field under `[metadata.source]` in every task's `task.toml` (see the table above for the
+per-repository breakdown).

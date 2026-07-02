@@ -2,6 +2,7 @@
 repository_owner = "oss-review-toolkit"
 repository_name = "ort"
 repository_url = "https://github.com/oss-review-toolkit/ort"
+license = "Apache-2.0"
 code_change_type = "pr"
 code_change_id = "8741"
 code_change_url = "https://github.com/oss-review-toolkit/ort/pull/8741"

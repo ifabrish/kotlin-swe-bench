@@ -2,6 +2,7 @@
 repository_owner = "GradleUp"
 repository_name = "shadow"
 repository_url = "https://github.com/GradleUp/shadow"
+license = "Apache-2.0"
 code_change_type = "pr"
 code_change_id = "1313"
 code_change_url = "https://github.com/GradleUp/shadow/pull/1313"

@@ -2,6 +2,7 @@
 repository_owner = "detekt"
 repository_name = "detekt"
 repository_url = "https://github.com/detekt/detekt"
+license = "Apache-2.0"
 code_change_type = "pr"
 code_change_id = "6446"
 code_change_url = "https://github.com/detekt/detekt/pull/6446"

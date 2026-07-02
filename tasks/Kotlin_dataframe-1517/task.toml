@@ -2,6 +2,7 @@
 repository_owner = "Kotlin"
 repository_name = "dataframe"
 repository_url = "https://github.com/Kotlin/dataframe"
+license = "Apache-2.0"
 code_change_type = "pr"
 code_change_id = "1517"
 code_change_url = "https://github.com/Kotlin/dataframe/pull/1517"

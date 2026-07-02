@@ -2,6 +2,7 @@
 repository_owner = "Hannah-Sten"
 repository_name = "TeXiFy-IDEA"
 repository_url = "https://github.com/Hannah-Sten/TeXiFy-IDEA"
+license = "MIT"
 code_change_type = "pr"
 code_change_id = "3920"
 code_change_url = "https://github.com/Hannah-Sten/TeXiFy-IDEA/pull/3920"
